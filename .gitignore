@@ -1,0 +1,6 @@
+# Game data: never in the repository (public)
+*.xlsm
+*.xlsx
+data/
+
+node_modules/
