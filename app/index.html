@@ -468,11 +468,19 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
 
   // ----------------------------- assisted entry ------------------------------
 
-  /** From oudlers held and points scored, deduces `succeeded` and `pointDiff`. */
+  /**
+   * From oudlers held and points scored (to the half point), deduces `succeeded` and `pointDiff`.
+   * FFT rule: a half point always goes to the winning side. With 2 oudlers (41 needed), 40.5 points make
+   * 40 (failed by 1) and 41.5 make 42 (made by 1).
+   */
   function assistedResult(oudlers, points) {
     const threshold = THRESHOLDS[oudlers];
     if (threshold === undefined) throw new Error('Nombre de bouts invalide (0 à 3).');
-    const diff = points - threshold;
+    if (typeof points !== 'number' || !Number.isFinite(points) || points < 0 || points > MAX_POINT_DIFF || !Number.isInteger(points * 2)) {
+      throw new Error(`Les points se comptent au demi-point près, de 0 à ${MAX_POINT_DIFF}.`);
+    }
+    const settled = points >= threshold ? Math.ceil(points) : Math.floor(points);
+    const diff = settled - threshold;
     return { succeeded: diff >= 0, pointDiff: Math.abs(diff) };
   }
 
@@ -909,8 +917,8 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
     }
     function applyAssist() {
       try {
-        const r = E.assistedResult(oudlers, parseInt(points, 10));
-        if (!Number.isFinite(parseInt(points, 10))) throw new Error('Indiquez les points réalisés.');
+        if (points.trim() === '') throw new Error('Indiquez les points réalisés.');
+        const r = E.assistedResult(oudlers, Number(points.replace(',', '.')));
         setSucceeded(r.succeeded); setDiff(String(r.pointDiff)); setError('');
       } catch (e) { setError(e.message); }
     }
@@ -969,7 +977,7 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
             ${[0, 1, 2, 3].map((k) => html`<button class="chip" aria-pressed=${oudlers === k} onClick=${() => setOudlers(k)}>${k} bout${k > 1 ? 's' : ''}</button>`)}
           </div>
           <div class="row" style="margin-top:8px">
-            <input type="number" inputmode="numeric" placeholder="Points réalisés" style="max-width:12em" value=${points} onInput=${(e) => setPoints(e.target.value)} />
+            <input type="text" inputmode="decimal" placeholder="Points réalisés (ex. 41,5)" style="max-width:15em" value=${points} onInput=${(e) => setPoints(e.target.value)} />
             <button class="btn" disabled=${oudlers === null} onClick=${applyAssist}>Calculer</button>
           </div>
         </details>`}
@@ -1026,6 +1034,7 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
       <${Field} label=${type === 'petitAuBout' ? 'Qui a gagné le petit au dernier pli ?' : type === 'slamFailed' ? 'Qui avait annoncé le chelem ?' : 'Joueur'}>
         <${PlayerSelect} doc=${doc} ids=${type === 'slamFailed' ? E.attackingTeam(deal) : E.activePlayers(deal)} value=${beneficiary} onChange=${setBeneficiary} />
       <//>
+      ${type === 'slamUnannounced' ? html`<p class="muted">Si le chelem est fait par un défenseur (chelem infligé au preneur), choisissez ce défenseur : chaque défenseur reçoit 200 points.</p>` : null}
       ${error ? html`<div class="error" role="alert">${error}</div>` : null}
       <div class="row end"><button class="btn" onClick=${onClose}>Annuler</button><button class="btn primary" onClick=${submit}>${ann ? 'Enregistrer' : 'Valider'}</button></div>
     <//>`;

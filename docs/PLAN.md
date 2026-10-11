@@ -58,7 +58,9 @@ What the workbook analysis confirmed:
 - Pousse: the FFT preset follows the official FFT rulebook ([Règlement FFT, donnes libres](https://fftarot.fr/assets/documents/ReglementFFT_DonnesLibres.pdf)), which has no Pousse (Prise ×1, Garde ×2, Garde sans ×4, Garde contre ×6; base 25) and no misère: both stay disabled in that preset. In the other presets the Pousse is disabled with coefficient 1 (the workbook had 1.5 in the custom set, which is not an integer).
 - FFT preset, decided: no rounding (the rulebook does not round; the workbook preset rounded to 10 on the base, which the functional specifications still list, so that table is superseded).
 - Announced slam that fails (new announcement "Chelem annoncé non réalisé", enabled in every rule set): the attacking side loses 200 per defender (taker 2/3 and partner 1/3, or the taker alone on a self-call), whatever the contract. Not multiplied by the contract, as in the FFT rulebook. Its beneficiary is the announcer, i.e. the taker or the partner.
-- Not modelled yet: a slam inflicted by the defence on the taker (+200 per defender in the FFT rulebook).
+- Slam inflicted by the defence on the taker (+200 per defender in the FFT rulebook): already handled by "Chelem non annoncé" with a defender as beneficiary; the announcement form says so.
+- Half points (FFT rulebook): the assisted entry accepts points to the half point; the half point goes to the winning side (40.5 → failed by 1, 41.5 → made by 1 with 2 oudlers).
+- The five worked examples of the FFT rulebook ("La marque en donnes libres") and the 3-player rule are pinned by tests. Audit of the rulebook's scoring: nothing else is missing (misère and Pousse do not exist in it).
 
 - Dark mode: the interface follows the system / browser setting (`prefers-color-scheme`) with no manual switch: palette variables, `color-scheme` for native controls, highlight colours and the browser theme colour all have dark counterparts.
 

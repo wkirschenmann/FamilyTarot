@@ -601,3 +601,66 @@ test('migrate completes old rule sets and refreshes unused presets', () => {
   assert.equal(byId('custom').announcements.slamFailed.base, 200, 'used rule set completed, not replaced');
   assert.equal(byId('old-school').announcements.slamFailed.valid, true);
 });
+
+// ------------------ FFT rulebook: half points and official examples --------
+
+test('FFT half-point rule: the half point goes to the winning side', () => {
+  assert.deepEqual(plain(E.assistedResult(2, 40.5)), { succeeded: false, pointDiff: 1 }); // "chute de UN point"
+  assert.deepEqual(plain(E.assistedResult(2, 41.5)), { succeeded: true, pointDiff: 1 });  // "passe de UN point"
+  assert.deepEqual(plain(E.assistedResult(0, 55.5)), { succeeded: false, pointDiff: 1 });
+  assert.deepEqual(plain(E.assistedResult(0, 56.5)), { succeeded: true, pointDiff: 1 });
+  assert.deepEqual(plain(E.assistedResult(3, 36)), { succeeded: true, pointDiff: 0 });
+  assert.throws(() => E.assistedResult(2, 41.3));
+  assert.throws(() => E.assistedResult(2, 92));
+  assert.throws(() => E.assistedResult(2, -1));
+});
+
+// The five worked examples of "La marque en donnes libres" (4 players), played with the FFT preset.
+const four = ['N', 'S', 'E', 'W'];
+const fftDeal = (extra) => Object.assign({ type: 'contract', dealer: 'N', players: four, dead: [], taker: 'N', partner: null, announcements: [] }, extra);
+const fftScores = (d, anns) => {
+  const r = rulesById('fft');
+  const total = E.contractScores(r, d);
+  for (const a of anns) { const s = E.announcementScores(r, d, a); for (const k of Object.keys(s)) total[k] += s[k]; }
+  return plain(total);
+};
+
+test('FFT rulebook example 1: garde, handful of 10, petit au bout, 49 points with 2 oudlers -> +318 / -106', () => {
+  const d = fftDeal({ contract: 'garde', succeeded: true, pointDiff: 49 - 41 });
+  assert.deepEqual(fftScores(d, [{ type: 'handful', beneficiary: 'N' }, { type: 'petitAuBout', beneficiary: 'N' }]), { N: 318, S: -106, E: -106, W: -106 });
+});
+
+test('FFT rulebook example 2: garde sans +4, petit au bout taken by the defence -> +228 / -76', () => {
+  const d = fftDeal({ contract: 'gardeSans', succeeded: true, pointDiff: 4 });
+  assert.deepEqual(fftScores(d, [{ type: 'petitAuBout', beneficiary: 'S' }]), { N: 228, S: -76, E: -76, W: -76 });
+});
+
+test('FFT rulebook example 3: prise failed by 7, handful of 10, petit au bout -> -126 / +42', () => {
+  const d = fftDeal({ contract: 'petite', succeeded: false, pointDiff: 7 });
+  assert.deepEqual(fftScores(d, [{ type: 'handful', beneficiary: 'N' }, { type: 'petitAuBout', beneficiary: 'N' }]), { N: -126, S: 42, E: 42, W: 42 });
+});
+
+test('FFT rulebook example 4: garde +11, handful shown by the defence -> +276 / -92', () => {
+  const d = fftDeal({ contract: 'garde', succeeded: true, pointDiff: 11 });
+  assert.deepEqual(fftScores(d, [{ type: 'handful', beneficiary: 'E' }]), { N: 276, S: -92, E: -92, W: -92 });
+});
+
+test('FFT rulebook example 5: garde, announced slam, handful and petit au bout -> +1746 / -582', () => {
+  const d = fftDeal({ contract: 'garde', succeeded: true, pointDiff: 46 });
+  assert.deepEqual(fftScores(d, [{ type: 'handful', beneficiary: 'N' }, { type: 'petitAuBout', beneficiary: 'N' }, { type: 'slamAnnounced', beneficiary: 'N' }]),
+    { N: 1746, S: -582, E: -582, W: -582 });
+});
+
+test('3 players: the taker scores twice the value (FFT 3-player rule)', () => {
+  const s = E.contractScores(rulesById('fft'), { type: 'contract', players: ['A', 'B', 'C'], dead: [], contract: 'petite', taker: 'A', succeeded: true, pointDiff: 5 });
+  assert.deepEqual(plain(s), { A: 60, B: -30, C: -30 });
+});
+
+test('slam inflicted by the defence: each defender receives 200 (unannounced slam, defender as beneficiary)', () => {
+  for (const rulesId of ['fft', 'old-school', 'custom']) {
+    const r = rulesById(rulesId);
+    const d = deal({ contract: 'petite', taker: 'Willy', partner: 'Fred', succeeded: false, pointDiff: 5 });
+    const s = E.announcementScores(r, d, { type: 'slamUnannounced', beneficiary: 'Greg' });
+    assert.deepEqual(plain(s), { Ricou: 200, Fred: -200, Willy: -400, Greg: 200, Lolo: 200 }, rulesId);
+  }
+});
