@@ -206,7 +206,7 @@ Le format `tarot.json` (`schemaVersion: 1`) est défini dès l'itération 1, pui
 | 0 | Squelette : `app/` PWA installable et hors ligne, workflow Pages, `.gitignore`, README | Hypothèse 10 (installation et mode avion, Android et PC) |
 | 1 | Moteur de calcul et tests | Les 5 exemples §8, critères 1, 2, 3 et 7 |
 | 2 | v1 UI locale : parties, saisie, annonces, corrections, tours passés, Goulasch, IndexedDB, export/import JSON | Critère 6, saisie réelle sur téléphone |
-| 3 | Synchronisation Google Drive : fichier désigné par secret GitHub, OAuth `drive.file`, Picker, compteur `rev`, verrou par scoreur, copies datées | Prototype préalable des hypothèses 1-4, 6, 11 et 12 (projet Google Cloud à créer par toi) |
+| 3 | Synchronisation Google Drive : fichier désigné par secret GitHub, OAuth `drive.file`, Picker, compteur `rev`, verrou par scoreur ; aucune copie datée : un seul fichier sur Drive, filet de sécurité = historique des versions de Drive (hypothèse 8) | Prototype préalable des hypothèses 1-4, 6, 11 et 12 (projet Google Cloud à créer par toi) |
 | 4 | Import du classeur et rapport de recalcul ; `tarot.json` produit puis déposé sur Drive comme fichier partagé de référence | Critère 4 (114 totaux, hors les 4 exceptions et la correction du 2014-11-10) |
 | 5 | Statistiques complètes et graphique | Critère 5 (2470 contrats, 79,0 % réalisés ; non-régression sur 75 parties) |
 | 6 | Confort : export **CSV et Excel (.xlsx)** d'une partie et des statistiques, annuler/rétablir, journal des modifications | Export ouvert dans Excel et LibreOffice |
@@ -233,7 +233,9 @@ Le format `tarot.json` est figé à la fin du lot 3 (Drive), pour que l'import (
   - il porte l'API Drive, l'API Picker, l'écran de consentement (droit `drive.file` seul) et un identifiant client OAuth « application Web », limité à l'adresse GitHub Pages ;
   - je fournirai un guide pas à pas (`docs/google-cloud.md`) au début du lot 3.
 
-- **Fichier unique** : un seul fichier `tarot.json`, créé une fois puis partagé en modification avec toutes les personnes concernées.
+- **Fichier unique** : un seul et unique fichier `tarot.json` sur Drive, créé une fois puis partagé en modification avec toutes les personnes concernées.
+  - L'app ne crée **aucun autre fichier** : pas de copies datées ni de sous-dossier, contrairement à ce que proposait le document d'architecture.
+  - Le filet de sécurité est l'historique des versions de Drive (hypothèse 8, à vérifier au prototype), plus l'export manuel du JSON.
 - **Injection du lien** : son lien, ou son identifiant, est stocké dans un **secret GitHub** (`TAROT_DRIVE_FILE_ID`). L'identifiant client OAuth y est aussi (`GOOGLE_CLIENT_ID`). Au déploiement, le workflow Pages remplace des marqueurs (`__GOOGLE_CLIENT_ID__`, `__TAROT_DRIVE_FILE_ID__`) dans la copie publiée de `index.html` ; rien n'est commité. Il n'y a toujours aucune compilation : c'est un simple remplacement de texte (`sed`).
 - **Limite à connaître** :
   - le site Pages est public, donc l'identifiant sera lisible dans la page publiée ;
