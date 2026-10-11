@@ -80,8 +80,11 @@ test('rounding mode: on points, on base, on total', () => {
   assert.equal(E.contractValue(r, 'garde', 18), 90);
 });
 
-test('FFT preset rounds on the base', () => {
-  assert.equal(E.contractValue(rulesById('fft'), 'garde', 17), 40 * 2);
+test('FFT preset does not round (as in the official rulebook)', () => {
+  const fft = rulesById('fft');
+  assert.equal(fft.roundTo, 1);
+  assert.equal(E.contractValue(fft, 'garde', 17), (25 + 17) * 2);
+  assert.equal(E.contractValue(fft, 'gardeContre', 12), (25 + 12) * 6);
 });
 
 // --------------------------- contract distribution -------------------------
@@ -527,7 +530,7 @@ test('FFT preset follows the official FFT rulebook (no Pousse, no misère)', () 
   assert.deepEqual(plain([a.handful, a.doubleHandful, a.tripleHandful].map((x) => [x.base, x.shared, x.canFail, x.multiplied])),
     [[20, true, true, false], [30, true, true, false], [40, true, true, false]]);
   assert.deepEqual(plain([a.petitAuBout.base, a.petitAuBout.multiplied, a.petitAuBout.shared, a.petitAuBout.canFail]), [10, true, true, false]);
-  assert.deepEqual(plain([a.slamUnannounced.base, a.slamAnnounced.base]), [200, 400]);
+  assert.deepEqual(plain([a.slamUnannounced.base, a.slamAnnounced.base, a.slamFailed.base]), [200, 400, 200]);
   assert.equal(a.misere.valid, false);
   assert.deepEqual(plain(E.validContracts(fft)), ['petite', 'garde', 'gardeSans', 'gardeContre']);
 });
@@ -535,10 +538,66 @@ test('FFT preset follows the official FFT rulebook (no Pousse, no misère)', () 
 test('FFT rulebook example: garde of +8 with 25 base gives 66 per opponent unit, petit au bout 10 x 2', () => {
   // "25 (contrat) + 8 = 33 multiplié par 2 (garde) = 66", petit au bout "10 X 2 = 20"
   const r = rulesById('fft');
-  r.roundTo = 1; // the rulebook does not round
-  r.roundOn = 'pts';
   assert.equal(E.contractValue(r, 'garde', 8), 66);
   const d = deal({ contract: 'garde', taker: 'Willy', partner: 'Fred', succeeded: true, pointDiff: 8 });
   const pab = E.announcementScores(r, d, { type: 'petitAuBout', beneficiary: 'Willy' });
   assert.equal(pab.Greg, -20);
+});
+
+// -------------------------- announced slam that fails ----------------------
+
+test('announced slam that fails: the attacking side pays 200 to each defender', () => {
+  const d = base5({ contract: 'garde', succeeded: true });
+  const s = E.announcementScores(custom(), d, { type: 'slamFailed', beneficiary: 'Willy' });
+  // base 200, not multiplied by the contract: taker -400, partner -200, three defenders +200
+  assert.deepEqual(plain(s), { Ricou: 200, Fred: -200, Willy: -400, Greg: 200, Lolo: 200 });
+  assert.equal(E.sumScores(s), 0);
+});
+
+test('announced slam that fails: self-call and 4 players', () => {
+  const self = E.announcementScores(custom(), base5({ taker: 'Willy', partner: 'Willy' }), { type: 'slamFailed', beneficiary: 'Willy' });
+  assert.deepEqual(plain(self), { Ricou: 200, Fred: 200, Willy: -800, Greg: 200, Lolo: 200 });
+  const four = ['A', 'B', 'C', 'D'];
+  const s = E.announcementScores(custom(), deal({ players: four, dealer: 'A', contract: 'garde', taker: 'A', succeeded: false, pointDiff: 5 }),
+    { type: 'slamFailed', beneficiary: 'A' });
+  assert.deepEqual(plain(s), { A: -600, B: 200, C: 200, D: 200 });
+});
+
+test('announced slam that fails: only the taker or the partner can be the beneficiary', () => {
+  const d = base5({});
+  assert.equal(E.validateAnnouncement(custom(), d, { type: 'slamFailed', beneficiary: 'Willy' }).length, 0);
+  assert.equal(E.validateAnnouncement(custom(), d, { type: 'slamFailed', beneficiary: 'Fred' }).length, 0);
+  assert.ok(E.validateAnnouncement(custom(), d, { type: 'slamFailed', beneficiary: 'Greg' }).length > 0);
+  assert.deepEqual(plain(E.attackingTeam(base5({ taker: 'Willy', partner: 'Willy' }))), ['Willy']);
+});
+
+test('announced slam that fails is available, with 200 points, in every rule set', () => {
+  for (const r of E.presetRules()) {
+    assert.deepEqual(plain([r.announcements.slamFailed.valid, r.announcements.slamFailed.base]), [true, 200], r.id);
+    assert.ok(E.validAnnouncements(r).includes('slamFailed'), r.id);
+  }
+});
+
+test('announced slam that fails goes through a game and its recalculation', () => {
+  const { doc, game } = newGame();
+  const a = E.addDeal(doc, game, input({ dealer: 'Ricou', contract: 'garde', pointDiff: 5 })).deal;
+  E.addAnnouncement(doc, game, a.id, { type: 'slamFailed', beneficiary: 'Willy' });
+  const { rows, totals } = E.recomputeGame(doc, game);
+  assert.ok(rows.every((r) => r.balanced));
+  assert.equal(totals.Willy, (25 + 5) * 2 * 2 - 400);
+  assert.throws(() => E.addAnnouncement(doc, game, a.id, { type: 'slamFailed', beneficiary: 'Greg' }));
+});
+
+test('migrate completes old rule sets and refreshes unused presets', () => {
+  const doc = plain(E.createDocument());
+  // simulate a document written before the announcement existed, with an old FFT preset
+  for (const r of doc.rules) delete r.announcements.slamFailed;
+  doc.rules.find((r) => r.id === 'fft').roundTo = 10;
+  const game = { id: 'g', date: '2026-01-01', rulesId: 'custom', state: 'archived', tableOrder: [], present: [], deals: [] };
+  doc.games.push(game);
+  const migrated = E.migrate(doc);
+  const byId = (id) => migrated.rules.find((r) => r.id === id);
+  assert.equal(byId('fft').roundTo, 1, 'unused preset refreshed');
+  assert.equal(byId('custom').announcements.slamFailed.base, 200, 'used rule set completed, not replaced');
+  assert.equal(byId('old-school').announcements.slamFailed.valid, true);
 });

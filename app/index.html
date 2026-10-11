@@ -111,13 +111,16 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
   const CONTRACT_KEYS = ['petite', 'pousse', 'garde', 'gardeSans', 'gardeContre'];
   const ANNOUNCEMENT_KEYS = [
     'petitAuBout', 'handful', 'doubleHandful', 'tripleHandful', 'misere', 'slamUnannounced', 'slamAnnounced',
+    'slamFailed',
   ];
+  // Announcements that cost the beneficiary's side instead of paying it (an announced slam that fails).
+  const PENALTY = { slamFailed: true };
   const LABELS = {
     petite: 'Petite', pousse: 'Pousse', garde: 'Garde', gardeSans: 'Garde sans', gardeContre: 'Garde contre',
     goulasch: 'Goulasch', passed: 'Tour passé',
     petitAuBout: 'Petit au bout', handful: 'Poignée', doubleHandful: 'Double poignée',
     tripleHandful: 'Triple poignée', misere: 'Misère', slamUnannounced: 'Chelem non annoncé',
-    slamAnnounced: 'Chelem annoncé',
+    slamAnnounced: 'Chelem annoncé', slamFailed: 'Chelem annoncé non réalisé',
   };
 
   // Oudlers (bouts) held -> points needed to succeed.
@@ -140,9 +143,10 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
     // FFT preset: follows the official FFT rulebook ("Règlement FFT, donnes libres",
     // https://fftarot.fr/assets/documents/ReglementFFT_DonnesLibres.pdf): contracts Prise x1, Garde x2,
     // Garde sans x4, Garde contre x6 on a base of 25; poignées 20/30/40; petit au bout 10 multiplied by the
-    // contract; chelem 200/400. The rulebook has no Pousse and no misère, so both stay disabled.
+    // contract; chelem 200/400, announced but failed slam -200; no rounding (to 1). The rulebook has no Pousse and
+    // no misère, so both stay disabled.
     const fft = {
-      id: 'fft', name: 'FFT', roundTo: 10, roundOn: 'base', split: { taker: 2, partner: 1 },
+      id: 'fft', name: 'FFT', roundTo: 1, roundOn: 'pts', split: { taker: 2, partner: 1 },
       contracts: {
         petite: contract(true, 25, 1), pousse: contract(false, 0, 0), garde: contract(true, 25, 2),
         gardeSans: contract(true, 25, 4), gardeContre: contract(true, 25, 6), goulasch: { valid: false, amount: 40 },
@@ -155,6 +159,7 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
         misere: announcement(false, 0, false, false, false),
         slamUnannounced: announcement(true, 200, false, true, false),
         slamAnnounced: announcement(true, 400, false, true, false),
+        slamFailed: announcement(true, 200, false, true, false),
       },
     };
     const oldSchool = {
@@ -171,6 +176,7 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
         misere: announcement(true, 10, false, false, false),
         slamUnannounced: announcement(true, 200, false, true, false),
         slamAnnounced: announcement(true, 400, false, true, false),
+        slamFailed: announcement(true, 200, false, true, false),
       },
     };
     const custom = {
@@ -187,6 +193,7 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
         misere: announcement(true, 10, false, false, false),
         slamUnannounced: announcement(true, 200, false, true, false),
         slamAnnounced: announcement(true, 400, false, true, false),
+        slamFailed: announcement(true, 200, false, true, false),
       },
     };
     // Until May 2016 the petit au bout was worth a fixed 10 (not multiplied by the contract).
@@ -298,6 +305,7 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
     const b = spec.base * (spec.multiplied ? rules.contracts[deal.contract].coef : 1);
     let sign = 1;
     if (spec.canFail && contractScores(rules, deal)[ann.beneficiary] < 0) sign = -1;
+    if (PENALTY[ann.type]) sign = -sign;
     const ben = ann.beneficiary;
 
     if (!spec.shared) {
@@ -447,8 +455,15 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
     else if (!rules.announcements[ann.type].valid && !ann.historical) errors.push("Cette annonce n'est pas activée dans les règles.");
     if (!ann.beneficiary || !activePlayers(deal).includes(ann.beneficiary)) {
       errors.push("Le bénéficiaire doit avoir joué la donne (ni mort ni absent).");
+    } else if (PENALTY[ann.type] && !attackingTeam(deal).includes(ann.beneficiary)) {
+      errors.push('Le chelem a été annoncé par le preneur (ou son partenaire).');
     }
     return errors;
+  }
+
+  /** Taker and, from 5 players, partner (no duplicate on a self-call). */
+  function attackingTeam(deal) {
+    return Array.from(new Set([deal.taker, deal.partner].filter(Boolean)));
   }
 
   // ----------------------------- assisted entry ------------------------------
@@ -467,7 +482,12 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
     return { schemaVersion: SCHEMA_VERSION, rev: 0, updatedAt: null, players: [], rules: presetRules(), games: [] };
   }
 
-  /** Upgrades an older document to the current schema (none yet) and rejects unknown ones. */
+  /**
+   * Upgrades an older document to the current schema and rejects unknown ones. Rule sets are history, so
+   * those used by a game are kept, only completed with announcements added since (disabled by default
+   * would hide them: they are added enabled with the preset values). Preset rule sets no game uses are
+   * refreshed to the current presets.
+   */
   function migrate(doc) {
     if (!doc || typeof doc !== 'object') throw new Error('Fichier invalide.');
     if (typeof doc.schemaVersion !== 'number') throw new Error('Fichier invalide : schemaVersion manquant.');
@@ -475,6 +495,18 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
     for (const key of ['players', 'rules', 'games']) {
       if (!Array.isArray(doc[key])) throw new Error(`Fichier invalide : "${key}" manquant.`);
     }
+    const presets = presetRules();
+    const used = new Set();
+    for (const g of doc.games) { used.add(g.rulesId); for (const d of g.deals) if (d.rulesId) used.add(d.rulesId); }
+    doc.rules = doc.rules.map((r) => {
+      const preset = presets.find((x) => x.id === r.id);
+      if (preset && !used.has(r.id)) return preset;
+      for (const key of ANNOUNCEMENT_KEYS) {
+        if (!r.announcements[key]) r.announcements[key] = JSON.parse(JSON.stringify((preset || presets[2]).announcements[key]));
+      }
+      return r;
+    });
+    for (const preset of presets) if (!doc.rules.some((r) => r.id === preset.id)) doc.rules.push(preset);
     return doc;
   }
 
@@ -713,7 +745,7 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
     newId, setIdGenerator,
     presetRules, validateRules, validContracts, validAnnouncements, goulaschEnabled,
     roundTo, contractValue, contractScores, announcementScores, sumScores, activePlayers, rulesFor,
-    recomputeGame, presentPlayers, nextDealer, expectedDealer, dealerGaps,
+    recomputeGame, presentPlayers, nextDealer, expectedDealer, dealerGaps, attackingTeam,
     validateDeal, validateAnnouncement, assistedResult,
     createDocument, migrate, findOrAddPlayer, playerName,
     createGame, currentGame, addDeal, insertDealAfter, updateDeal, deleteDeal,
@@ -991,8 +1023,8 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
           ${options.map((k) => html`<option value=${k} selected=${k === type}>${L[k]}</option>`)}
         </select>
       <//>
-      <${Field} label=${type === 'petitAuBout' ? 'Qui a gagné le petit au dernier pli ?' : 'Joueur'}>
-        <${PlayerSelect} doc=${doc} ids=${E.activePlayers(deal)} value=${beneficiary} onChange=${setBeneficiary} />
+      <${Field} label=${type === 'petitAuBout' ? 'Qui a gagné le petit au dernier pli ?' : type === 'slamFailed' ? 'Qui avait annoncé le chelem ?' : 'Joueur'}>
+        <${PlayerSelect} doc=${doc} ids=${type === 'slamFailed' ? E.attackingTeam(deal) : E.activePlayers(deal)} value=${beneficiary} onChange=${setBeneficiary} />
       <//>
       ${error ? html`<div class="error" role="alert">${error}</div>` : null}
       <div class="row end"><button class="btn" onClick=${onClose}>Annuler</button><button class="btn primary" onClick=${submit}>${ann ? 'Enregistrer' : 'Valider'}</button></div>
