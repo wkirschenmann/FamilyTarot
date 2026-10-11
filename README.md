@@ -4,6 +4,7 @@ Web app (PWA) for scoring tarot games, replacing the "Calcul Scores Tarot" Excel
 
 - Published site: https://wkirschenmann.github.io/FamilyTarot/
 - Implementation plan: [docs/PLAN.md](docs/PLAN.md)
+- Google Drive sync setup: [docs/google-cloud.md](docs/google-cloud.md)
 
 The repository (code, docs, commits, PRs) is in English; the app's user interface is in French.
 
