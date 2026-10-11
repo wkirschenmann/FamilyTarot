@@ -1005,7 +1005,7 @@ details.rules-card[open] > summary { margin-bottom: 8px; }
         ` : html`
         <div class="grid2">
           <${Field} label="Preneur"><${PlayerSelect} doc=${doc} ids=${active} value=${taker} onChange=${setTaker} /><//>
-          ${n >= 5 ? html`<${Field} label="Partenaire (= preneur : s’appelle)"><${PlayerSelect} doc=${doc} ids=${active} value=${partner} onChange=${setPartner} /><//>` : null}
+          ${n >= 5 ? html`<${Field} label="Appelé"><${PlayerSelect} doc=${doc} ids=${active} value=${partner} onChange=${setPartner} /><//>` : null}
         </div>
         <${Field} label="Contrat réalisé ?" group=${true}>
           <div class="seg">
