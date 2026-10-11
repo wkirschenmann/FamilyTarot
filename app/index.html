@@ -108,6 +108,17 @@ table.stat td:first-child { white-space: normal; }
 table.stat.wide td, table.stat.wide th { padding: 5px 4px; font-size: .86rem; }
 .stats-table th, .stats-table td { padding: 6px 5px; font-size: .88rem; }
 .stats-table td.label, .stats-table th.label { min-width: 92px; max-width: 120px; }
+
+.chart-card { margin-top: 12px; }
+svg.chart { width: 100%; height: auto; display: block; }
+svg.chart .axis { stroke: var(--line); stroke-width: 1; }
+svg.chart .axis.zero { stroke: var(--muted); stroke-width: 1; }
+svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabular-nums; }
+.legend { margin-top: 6px; gap: 6px; }
+.legend .chip { padding: 4px 10px; font-size: .86rem; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+.legend .chip[aria-pressed=true] { background: var(--card); color: var(--fg); }
+.legend .chip[aria-pressed=false] { opacity: .5; }
   </style>
 </head>
 <body>
@@ -455,6 +466,20 @@ table.stat.wide td, table.stat.wide th { padding: 5px 4px; font-size: .86rem; }
     return { rows, totals };
   }
 
+  /**
+   * Running totals after each deal (announcements included), for the evolution chart:
+   * { players: [ids], points: [{ deal: number, totals: { id: total } }] } starting with a zero point (deal 0).
+   * Passed deals are skipped (they score nothing).
+   */
+  function evolution(doc, game) {
+    const { rows } = recomputeGame(doc, game);
+    const last = new Map();
+    for (const row of rows) if (row.deal.type !== 'passed') last.set(row.deal.id, row);
+    const points = [{ deal: 0, totals: zeroScores(game.tableOrder) }];
+    for (const row of last.values()) points.push({ deal: row.number, totals: Object.assign(zeroScores(game.tableOrder), row.cumulative) });
+    return { players: game.tableOrder.slice(), points };
+  }
+
   // ------------------------------- dealers -----------------------------------
 
   function presentPlayers(game) { return game.tableOrder.filter((p) => game.present.includes(p)); }
@@ -555,6 +580,74 @@ table.stat.wide td, table.stat.wide th { padding: 5px 4px; font-size: .86rem; }
     const settled = points >= threshold ? Math.ceil(points) : Math.floor(points);
     const diff = settled - threshold;
     return { succeeded: diff >= 0, pointDiff: Math.abs(diff) };
+  }
+
+  // -------------------------------- exports ----------------------------------
+
+  const yesNo = (v) => (v === true ? 'oui' : v === false ? 'non' : '');
+
+  /** The score sheet of a game as a table (header + rows of strings / numbers), like the old workbook's sheet. */
+  function gameTable(doc, game) {
+    const name = (id) => playerName(doc, id);
+    const ids = game.tableOrder;
+    const header = ['N°', 'Donneur', 'Contrat / Annonce', 'Preneur / Annonceur / Gagnant', 'Appelé / Perdant', 'Mort(s)', 'Réalisé ?', 'Écart']
+      .concat(ids.map((id) => name(id))).concat(ids.map((id) => `Cumul ${name(id)}`));
+    const { rows } = recomputeGame(doc, game);
+    const body = rows.map((row) => {
+      const d = row.deal;
+      let first;
+      if (row.ann) first = [row.number, '', LABELS[row.ann.type], name(row.ann.beneficiary), '', '', '', ''];
+      else if (d.type === 'passed') first = [row.number, d.dealer ? name(d.dealer) : '', LABELS.passed, '', '', '', '', ''];
+      else if (d.type === 'goulasch') first = [row.number, d.dealer ? name(d.dealer) : '', LABELS.goulasch, name(d.winner), name(d.loser), d.dead.map(name).join(' + '), '', ''];
+      else {
+        first = [row.number, d.dealer ? name(d.dealer) : '', LABELS[d.contract], name(d.taker), d.partner ? name(d.partner) : '',
+          d.dead.map(name).join(' + '), yesNo(d.succeeded), d.pointDiff];
+      }
+      const scores = ids.map((id) => (d.players.includes(id) ? (row.scores[id] || 0) : ''));
+      const cumul = ids.map((id) => row.cumulative[id] || 0);
+      return first.concat(scores, cumul);
+    });
+    return { header, rows: body };
+  }
+
+  /**
+   * The statistics as several tables { name, header, rows, percentCols }: ranking, takes per contract,
+   * announcements per type, partners called. Shares and rates are fractions (0.8 = 80 %).
+   */
+  function statsTables(doc, st) {
+    const name = (id) => playerName(doc, id);
+    const ids = Object.keys(st.players).filter((id) => st.players[id].games > 0)
+      .sort((a, b) => (st.players[b].avgPointsPerGame || 0) - (st.players[a].avgPointsPerGame || 0));
+    const subjects = ids.map((id) => [name(id), st.players[id]]).concat([['Total', st.total]]);
+    const nz = (v) => (v === null || v === undefined ? '' : v);
+    const ranking = {
+      name: 'Classement', percentCols: [9, 11],
+      header: ['Joueur', 'Parties', 'Donnes', 'Points', 'Moyenne par partie', 'Victoires', 'Dernières places', 'Prises', 'Réussies', 'Taux de réussite',
+        'Écart moyen', 'Auto-appels (part des prises)', 'Annonces', 'Annonces pour 10 donnes', 'Annonces par partie', 'Goulasch gagnés', 'Goulasch perdus', 'Solde Goulasch'],
+      rows: subjects.map(([n, p]) => [n, p.games, p.deals, p.points, nz(p.avgPointsPerGame), n === 'Total' ? '' : p.wins, n === 'Total' ? '' : p.lasts,
+        p.takes.count, p.takes.succeeded, nz(p.takes.rate), nz(p.takes.avgDiff), nz(p.takes.selfCallShare), p.announcements.count,
+        nz(p.announcements.per10Deals), nz(p.announcements.perGame), p.goulasch.won, n === 'Total' ? '' : p.goulasch.lost, n === 'Total' ? '' : p.goulasch.balance]),
+    };
+    const takes = { name: 'Prises', percentCols: [3, 5], header: ['Joueur', 'Contrat', 'Nombre', 'Répartition', 'Réussies', 'Taux de réussite', 'Écart moyen'], rows: [] };
+    const announcements = { name: 'Annonces', percentCols: [3], header: ['Joueur', 'Annonce', 'Nombre', 'Répartition'], rows: [] };
+    const partners = { name: 'Partenaires', percentCols: [], header: ['Preneur', 'Appelé', 'Nombre'], rows: [] };
+    for (const [n, p] of subjects) {
+      for (const k of CONTRACT_KEYS) { const b = p.takes.byContract[k]; if (b) takes.rows.push([n, LABELS[k], b.count, nz(b.share), b.succeeded, nz(b.rate), nz(b.avgDiff)]); }
+      for (const k of ANNOUNCEMENT_KEYS) { const c = p.announcements.byType[k]; if (c) announcements.rows.push([n, LABELS[k], c, nz(p.announcements.shares[k])]); }
+      for (const pid of Object.keys(p.partners).sort((a, b) => p.partners[b] - p.partners[a])) partners.rows.push([n, name(pid), p.partners[pid]]);
+    }
+    return [ranking, takes, announcements, partners];
+  }
+
+  /** CSV for a French spreadsheet: ';' separator, decimal comma, quotes doubled, BOM so that Excel reads UTF-8. */
+  function toCsv(header, rows) {
+    const cell = (v) => {
+      if (v === null || v === undefined) return '';
+      if (typeof v === 'number') return String(Math.round(v * 10000) / 10000).replace('.', ',');
+      const t = String(v);
+      return /[;"\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+    };
+    return '\ufeff' + [header].concat(rows).map((r) => r.map(cell).join(';')).join('\r\n') + '\r\n';
   }
 
   // ------------------------------ documents ----------------------------------
@@ -959,9 +1052,9 @@ table.stat.wide td, table.stat.wide th { padding: 5px 4px; font-size: .86rem; }
     newId, setIdGenerator, localDate,
     presetRules, validateRules, sameRules, findOrAddRules, validContracts, validAnnouncements, goulaschEnabled,
     roundTo, contractValue, contractScores, announcementScores, sumScores, activePlayers, rulesFor,
-    recomputeGame, presentPlayers, nextDealer, expectedDealer, dealerGaps, attackingTeam,
+    recomputeGame, evolution, presentPlayers, nextDealer, expectedDealer, dealerGaps, attackingTeam,
     validateDeal, validateAnnouncement, assistedResult,
-    createDocument, migrate, findOrAddPlayer, playerName,
+    createDocument, migrate, findOrAddPlayer, playerName, gameTable, statsTables, toCsv,
     createGame, currentGame, addDeal, insertDealAfter, updateDeal, deleteDeal,
     addAnnouncement, updateAnnouncement, deleteAnnouncement,
     setPresentPlayers, addPlayerToTable, changeRules, endGame, ranking, computeStats,
@@ -1032,12 +1125,64 @@ table.stat.wide td, table.stat.wide th { padding: 5px 4px; font-size: .86rem; }
     return `${L[deal.contract]} — ${who} · ${deal.succeeded ? 'réalisé de' : 'chuté de'} ${deal.pointDiff}`;
   }
 
-  function download(filename, text) {
-    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  function download(filename, content, type = 'application/json') {
+    const url = URL.createObjectURL(content instanceof Blob ? content : new Blob([content], { type }));
     const a = document.createElement('a');
     a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  // ------------------------------ exports ------------------------------------
+
+  let sheetJs = null;
+  /** SheetJS is a big file: loaded only when an Excel export is requested (cached by the service worker). */
+  function loadSheetJs() {
+    if (window.XLSX) return Promise.resolve(window.XLSX);
+    if (!sheetJs) {
+      sheetJs = new Promise((resolve, reject) => {
+        const el = document.createElement('script');
+        el.src = 'xlsx.full.min.js';
+        el.onload = () => resolve(window.XLSX);
+        el.onerror = () => { sheetJs = null; reject(new Error('Export Excel indisponible : le module n’a pas pu être chargé (hors ligne ?).')); };
+        document.head.appendChild(el);
+      });
+    }
+    return sheetJs;
+  }
+
+  /** tables: [{ name, header, rows, percentCols }] -> one sheet each. */
+  async function downloadExcel(filename, tables) {
+    const X = await loadSheetJs();
+    const wb = X.utils.book_new();
+    for (const t of tables) {
+      const ws = X.utils.aoa_to_sheet([t.header].concat(t.rows));
+      ws['!cols'] = t.header.map((h) => ({ wch: Math.max(9, String(h).length + 2) }));
+      for (const c of t.percentCols || []) {
+        for (let r = 1; r <= t.rows.length; r += 1) {
+          const cell = ws[X.utils.encode_cell({ r, c })];
+          if (cell && typeof cell.v === 'number') cell.z = '0.0%';
+        }
+      }
+      X.utils.book_append_sheet(wb, ws, t.name.replace(/[\\/?*[\]:]/g, ' ').slice(0, 31));
+    }
+    const data = X.write(wb, { bookType: 'xlsx', type: 'array' });
+    download(filename, new Blob([data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  }
+
+  function downloadCsv(filename, header, rows) {
+    download(filename, E.toCsv(header, rows), 'text/csv;charset=utf-8');
+  }
+
+  function ExportButtons({ onCsv, onExcel, hint }) {
+    const [error, setError] = useState('');
+    return html`<div>
+      <div class="row"><span class="muted">Exporter :</span>
+        <button class="btn small" onClick=${() => { setError(''); onCsv(); }}>CSV</button>
+        <button class="btn small" onClick=${() => { setError(''); onExcel().catch((e) => setError(e.message)); }}>Excel</button></div>
+      ${hint ? html`<div class="muted" style="font-size:.82rem">${hint}</div>` : null}
+      ${error ? html`<div class="error" role="alert">${error}</div>` : null}
+    </div>`;
   }
 
   // ------------------------------ UI bricks ----------------------------------
@@ -1376,6 +1521,55 @@ table.stat.wide td, table.stat.wide th { padding: 5px 4px; font-size: .86rem; }
     </table></div>`;
   }
 
+  // ------------------------------ evolution chart ----------------------------
+
+  // Seven distinguishable hues, readable on light and dark backgrounds (one per seat, 7 players at most).
+  const SERIES = ['#2a7ab9', '#e07b24', '#2f9e54', '#9a62c8', '#c94c4c', '#8a7a2c', '#13a3b5'];
+
+  function niceStep(range, target) {
+    const raw = range / target;
+    const pow = Math.pow(10, Math.floor(Math.log10(raw || 1)));
+    const f = raw / pow;
+    return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * pow;
+  }
+
+  function EvolutionChart({ doc, game }) {
+    const data = E.evolution(doc, clone(game));
+    const [hidden, setHidden] = useState([]);
+    if (data.points.length < 2) return null;
+    const W = 360, H = 230, left = 44, right = 10, top = 10, bottom = 24;
+    const shown = data.players.filter((id) => !hidden.includes(id));
+    const values = [0].concat(...shown.map((id) => data.points.map((pt) => pt.totals[id])));
+    let lo = Math.min(...values), hi = Math.max(...values);
+    if (lo === hi) { lo -= 10; hi += 10; }
+    const step = niceStep(hi - lo, 4);
+    lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;
+    const lastDeal = data.points[data.points.length - 1].deal;
+    const x = (deal) => left + ((W - left - right) * deal) / (lastDeal || 1);
+    const y = (v) => top + ((H - top - bottom) * (hi - v)) / (hi - lo);
+    const yTicks = [];
+    for (let v = lo; v <= hi + 1e-9; v += step) yTicks.push(v);
+    const xStep = Math.max(1, Math.ceil(lastDeal / 8));
+    const xTicks = [];
+    for (let d = 0; d <= lastDeal; d += xStep) xTicks.push(d);
+    const colorOf = (id) => SERIES[data.players.indexOf(id) % SERIES.length];
+    const final = data.points[data.points.length - 1].totals;
+    const toggle = (id) => setHidden(hidden.includes(id) ? hidden.filter((h) => h !== id) : hidden.concat(id));
+    return html`<details class="card chart-card" open>
+      <summary>Évolution des scores</summary>
+      <svg viewBox=${`0 0 ${W} ${H}`} role="img" aria-label="Évolution du cumul de chaque joueur, donne après donne" class="chart">
+        ${yTicks.map((v) => html`<g><line x1=${left} x2=${W - right} y1=${y(v)} y2=${y(v)} class=${v === 0 ? 'axis zero' : 'axis'} />
+          <text x=${left - 5} y=${y(v) + 3} text-anchor="end" class="tick">${pts(v)}</text></g>`)}
+        ${xTicks.map((d) => html`<text x=${x(d)} y=${H - 7} text-anchor="middle" class="tick">${d}</text>`)}
+        ${shown.map((id) => html`<polyline fill="none" stroke=${colorOf(id)} stroke-width="2" stroke-linejoin="round" stroke-linecap="round"
+          points=${data.points.map((pt) => `${x(pt.deal).toFixed(1)},${y(pt.totals[id]).toFixed(1)}`).join(' ')} />`)}
+        ${shown.map((id) => html`<circle cx=${x(lastDeal)} cy=${y(final[id])} r="3" fill=${colorOf(id)} />`)}
+      </svg>
+      <div class="row legend">${data.players.map((id) => html`<button class="chip" aria-pressed=${!hidden.includes(id)} onClick=${() => toggle(id)}
+          style=${hidden.includes(id) ? '' : `border-color:${colorOf(id)}`}><span class="dot" style=${`background:${colorOf(id)}`}></span>${E.playerName(doc, id)} <b class=${cls(final[id])}>${fmt(final[id])}</b></button>`)}</div>
+    </details>`;
+  }
+
   // ------------------------------ game screen --------------------------------
 
   function GameScreen({ doc, game, commit, go }) {
@@ -1439,6 +1633,10 @@ table.stat.wide td, table.stat.wide th { padding: 5px 4px; font-size: .86rem; }
       ${E.dealerGaps(game).length ? html`<div class="warn" role="status">⚠ ${E.dealerGaps(game).length > 1 ? 'Plusieurs donnes ont' : 'Une donne a'} un donneur inattendu (repéré${E.dealerGaps(game).length > 1 ? 'es' : 'e'} par ⚠) : il manque peut-être des donnes, ou un joueur a oublié de distribuer.</div>` : null}
       ${game.deals.length ? html`<${Sheet} doc=${doc} game=${game} readOnly=${readOnly} onRow=${onRow} />`
         : html`<div class="card muted">Aucune donne pour l’instant.</div>`}
+      ${game.deals.length ? html`<${EvolutionChart} doc=${doc} game=${game} />` : null}
+      ${game.deals.length ? html`<div style="margin-top:12px"><${ExportButtons}
+        onCsv=${() => { const t = E.gameTable(doc, clone(game)); downloadCsv(`tarot-partie-${game.date}.csv`, t.header, t.rows); }}
+        onExcel=${() => { const t = E.gameTable(doc, clone(game)); return downloadExcel(`tarot-partie-${game.date}.xlsx`, [{ name: 'Partie ' + game.date, header: t.header, rows: t.rows }]); }} /></div>` : null}
       ${readOnly ? null : html`<div class="row end" style="margin-top:14px">
         <button class="btn danger" onClick=${async () => { if (confirm('Terminer la partie ? Elle passera dans l’historique.')) { await commit(withGame((dr, g) => E.endGame(g))); go('#/'); } }}>Terminer la partie</button>
       </div>`}
@@ -1610,6 +1808,7 @@ table.stat.wide td, table.stat.wide th { padding: 5px 4px; font-size: .86rem; }
     if (/^\d{4}$/.test(period)) range = { from: period + '-01-01', to: period + '-12-31' };
     else if (period === 'custom') range = { from: from || null, to: to || null };
     const st = E.computeStats(doc, range);
+    const periodName = period === 'all' ? 'toutes-les-parties' : period === 'custom' ? `${from || 'debut'}_${to || 'fin'}` : period;
     const keyOf = {
       avg: (p) => (p.avgPointsPerGame === null ? -Infinity : p.avgPointsPerGame), total: (p) => p.points, wins: (p) => p.wins,
       games: (p) => p.games, deals: (p) => p.deals,
@@ -1644,6 +1843,9 @@ table.stat.wide td, table.stat.wide th { padding: 5px 4px; font-size: .86rem; }
             <td>${p.wins}</td><td>${p.lasts}</td></tr>`; })}</tbody>
           <tfoot><tr class="tap" onClick=${() => setDetail('total')}><td class="label">Total général<small class="muted" style="display:block">${st.games} partie${st.games > 1 ? 's' : ''}</small></td><td></td><td></td><td></td><td></td></tr></tfoot>
         </table></div>
+        <${ExportButtons} hint="CSV : le classement. Excel : classement, prises, annonces et partenaires."
+          onCsv=${() => { const t = E.statsTables(doc, st)[0]; downloadCsv(`tarot-statistiques-${periodName}.csv`, t.header, t.rows); }}
+          onExcel=${() => downloadExcel(`tarot-statistiques-${periodName}.xlsx`, E.statsTables(doc, st))} />
         ${lowGames ? html`<p class="muted">⚠ Moins de 10 parties : la moyenne par partie est peu fiable.</p>` : null}
         <p class="muted">Touchez un joueur pour voir le détail (prises, annonces, partenaires). Les tours passés ne comptent pas comme donnes jouées ; le Goulasch compte comme une donne, mais pas comme une prise.</p>`}
       ${detail && st.games ? html`<${PlayerStats} doc=${doc} st=${st} id=${detail} onClose=${() => setDetail(null)} />` : null}

@@ -3,7 +3,7 @@
 // __BUILD__ is replaced at deployment, so every release gets its own cache.
 const CACHE_PREFIX = 'tarot-';
 const CACHE = CACHE_PREFIX + '__BUILD__';
-const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
+const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png', 'xlsx.full.min.js'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));

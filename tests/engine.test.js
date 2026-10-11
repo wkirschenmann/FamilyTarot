@@ -870,3 +870,70 @@ test('stats: a player seated but without any deal still counts the game (old wor
   assert.equal(st.players.Lolo.games, 1);
   assert.equal(st.players.Lolo.deals, 0);
 });
+
+// ------------------------------ evolution chart ----------------------------
+
+test('evolution: running totals after each deal, announcements included, passed deals skipped', () => {
+  const { doc, game } = newGame(five, 'fft');
+  const a = E.addDeal(doc, game, input({ dealer: 'Ricou', contract: 'garde', pointDiff: 17 })).deal;
+  E.addAnnouncement(doc, game, a.id, { type: 'petitAuBout', beneficiary: 'Greg' });
+  E.addDeal(doc, game, input({ dealer: 'Willy', contract: 'petite', taker: 'Fred', partner: 'Lolo', succeeded: false, pointDiff: 3 })); // Fred skipped -> 1 passed deal
+  const ev = plain(E.evolution(doc, game));
+  assert.deepEqual(ev.players, five);
+  assert.deepEqual(ev.points.map((p) => p.deal), [0, 1, 3], 'the passed deal (number 2) is skipped');
+  assert.deepEqual(ev.points[0].totals, { Ricou: 0, Fred: 0, Willy: 0, Greg: 0, Lolo: 0 });
+  const afterFirst = ev.points[1].totals;
+  assert.equal(afterFirst.Willy, 168 - 40 * 0 - 40, 'garde 168 for the taker, minus the petit au bout paid by the defence (10 x 2 x 2)');
+  const sum = (o) => Object.values(o).reduce((x, y) => x + y, 0);
+  assert.ok(ev.points.every((p) => sum(p.totals) === 0));
+  assert.equal(ev.points[2].totals.Willy, E.recomputeGame(doc, game).totals.Willy);
+});
+
+test('evolution: an empty game only has the starting point', () => {
+  const { doc, game } = newGame();
+  assert.equal(E.evolution(doc, game).points.length, 1);
+});
+
+// ---------------------------------- exports --------------------------------
+
+test('toCsv: ; separator, decimal comma, quotes doubled, BOM', () => {
+  const csv = E.toCsv(['Joueur', 'Note'], [['A;B', 1.5], ['Dit "oui"', 3], ['x', null]]);
+  assert.equal(csv.charCodeAt(0), 0xfeff);
+  assert.equal(csv.slice(1), 'Joueur;Note\r\n"A;B";1,5\r\n"Dit ""oui""";3\r\nx;\r\n');
+});
+
+test('gameTable: one row per contract / announcement / passed deal, scores and running totals', () => {
+  const { doc, game } = newGame(five, 'old-school');
+  for (const p of five) doc.players.push({ id: p, firstName: p });
+  const a = E.addDeal(doc, game, input({ dealer: 'Ricou', contract: 'garde', pointDiff: 17 })).deal;
+  E.addAnnouncement(doc, game, a.id, { type: 'misere', beneficiary: 'Ricou' });
+  E.addDeal(doc, game, input({ dealer: 'Willy', contract: 'petite', taker: 'Fred', partner: 'Fred', succeeded: false, pointDiff: 3 })); // Fred skipped
+  const t = plain(E.gameTable(doc, game));
+  assert.deepEqual(t.header.slice(0, 8), ['N°', 'Donneur', 'Contrat / Annonce', 'Preneur / Annonceur / Gagnant', 'Appelé / Perdant', 'Mort(s)', 'Réalisé ?', 'Écart']);
+  assert.equal(t.header.length, 8 + 5 + 5);
+  assert.equal(t.rows.length, 4, 'garde, misère, passed deal, petite');
+  assert.deepEqual(t.rows[0].slice(0, 8), [1, 'Ricou', 'Garde', 'Willy', 'Fred', '', 'oui', 17]);
+  assert.deepEqual(t.rows[1].slice(0, 4), [1, '', 'Misère', 'Ricou']);
+  assert.equal(t.rows[2][2], 'Tour passé');
+  assert.deepEqual(t.rows[2].slice(8, 13), [0, 0, 0, 0, 0]);
+  assert.deepEqual(t.rows[3].slice(0, 8), [3, 'Willy', 'Petite', 'Fred', 'Fred', '', 'non', 3]);
+  const sum = (a) => a.reduce((x, y) => x + y, 0);
+  for (const row of t.rows) assert.equal(sum(row.slice(8, 13)), 0, 'every row sums to 0');
+  assert.equal(sum(t.rows[3].slice(13, 18)), 0);
+  assert.equal(t.rows[3][13 + 2], E.recomputeGame(doc, game).totals.Willy);
+});
+
+test('statsTables: ranking, takes, announcements and partners tables', () => {
+  const { doc } = statsDoc();
+  for (const p of five) doc.players.push({ id: p, firstName: p });
+  const tables = plain(E.statsTables(doc, E.computeStats(doc, {})));
+  assert.deepEqual(tables.map((t) => t.name), ['Classement', 'Prises', 'Annonces', 'Partenaires']);
+  const ranking = tables[0];
+  assert.equal(ranking.rows[ranking.rows.length - 1][0], 'Total');
+  assert.equal(ranking.rows[0].length, ranking.header.length);
+  assert.equal(ranking.rows[ranking.rows.length - 1][3], 0, 'total points are 0');
+  const takes = tables[1];
+  const totalPetite = takes.rows.find((r) => r[0] === 'Total' && r[1] === 'Petite');
+  assert.equal(totalPetite[2], 3);
+  assert.ok(tables[3].rows.some((r) => r[0] === 'Fred' && r[1] === 'Fred' && r[2] === 1), 'the self-call');
+});
