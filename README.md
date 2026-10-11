@@ -41,6 +41,8 @@ node verify-stats.js "Calcul Scores Tarot.xlsm"    # compares the statistics wit
 
 Then use "Importer (JSON)" on the app's home screen: it adds the file's content to the data already on the device and never deletes or changes anything (games already present are left as they are, players are matched by first name).
 
+Backups: "Exporter (JSON)" downloads everything. "Restaurer une sauvegarde…" replaces all the data with such a file and "Tout réinitialiser" erases everything; both keep the previous data once as a safety copy ("Revenir à l'état d'avant").
+
 ## License
 
 Apache 2.0, see [LICENSE](LICENSE).

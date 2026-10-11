@@ -76,6 +76,8 @@ What the workbook analysis confirmed:
 
 - JSON import is a merge (`TarotEngine.mergeDocument`): it adds the file's games, players (matched by first name) and rule sets (matched by values) to the local data and never deletes or changes what is already there; a game already present (same id) is left as it is, so importing the same file twice changes nothing; an incoming game in progress is archived if one is already in progress locally.
 
+- Restore and reset (home screen, "Zone sensible"): "Restaurer une sauvegarde…" replaces ALL the data with an exported file, "Tout réinitialiser" erases them; both ask for a confirmation and keep the previous data once in IndexedDB (`safety`), so that "Revenir à l'état d'avant" takes the mistake back (a second restore / reset replaces that copy).
+
 ## Repository structure
 
 ```
