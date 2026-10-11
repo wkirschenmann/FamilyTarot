@@ -129,6 +129,11 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
 <body>
 <div id="root"></div>
 <script>window.TAROT_BUILD = '__BUILD__';</script>
+<script>
+  // Replaced at deployment from the repository secrets (see docs/google-cloud.md); a value still of the form __NAME__
+  // means "not configured" (local use, or secret not set): the Drive features stay off.
+  window.TAROT_CONFIG = { googleClientId: '__GOOGLE_CLIENT_ID__', googleApiKey: '__GOOGLE_API_KEY__', googleAppId: '__GOOGLE_APP_ID__' };
+</script>
 <script id="engine">
 (function (root) {
   'use strict';

@@ -64,9 +64,11 @@ In the repository: **Settings → Secrets and variables → Actions → New repo
 | `GOOGLE_API_KEY` | the API key from step 5 |
 | `GOOGLE_APP_ID` | the project number from step 5 |
 
-None of these is truly secret: they end up readable in the published page, like any web app's client ID. The workflow injects
-them into `app/index.html` at deployment (same mechanism as the build id), so nothing is committed. What actually protects the
-data is the Drive sharing: only the accounts the file is shared with can open it.
+None of these is truly secret: they end up readable in the published page, like any web app's client ID. The deployment workflow
+(`.github/workflows/pages.yml`, step "Inject configuration") writes them into `window.TAROT_CONFIG` in `app/index.html`, so nothing
+is committed. A secret that is not set leaves its `__GOOGLE_…__` placeholder in the page, which the app treats as "not configured".
+The Drive features that read `window.TAROT_CONFIG` come with iteration 3: until then creating the secrets is harmless but has no
+visible effect. What actually protects the data is the Drive sharing: only the accounts the file is shared with can open it.
 
 ## 7. Drive file and sharing
 

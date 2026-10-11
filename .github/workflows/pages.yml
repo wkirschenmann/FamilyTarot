@@ -38,6 +38,24 @@ jobs:
         run: |
           sed -i "s/__BUILD__/${GITHUB_SHA::7}/" app/sw.js
           sed -i "s/__BUILD__/${GITHUB_SHA::7} ($(date -u +%Y-%m-%d\ %H:%M) UTC)/" app/index.html
+      - name: Inject configuration
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GOOGLE_APP_ID: ${{ secrets.GOOGLE_APP_ID }}
+        run: |
+          # A secret that is not set leaves its __NAME__ placeholder in the page, which the app reads as "not configured".
+          # Google client ids, API keys and project numbers only contain letters, digits, '.', '_' and '-': anything else
+          # would break the page's JavaScript string, so it stops the deployment instead of being injected.
+          for name in GOOGLE_CLIENT_ID GOOGLE_API_KEY GOOGLE_APP_ID; do
+            value="${!name}"
+            if [ -n "$value" ]; then
+              case "$value" in
+                *[!A-Za-z0-9._-]*) echo "::error::$name contains unexpected characters"; exit 1 ;;
+              esac
+              sed -i "s|__${name}__|${value}|g" app/index.html
+            fi
+          done
       - uses: actions/upload-pages-artifact@v3
         with:
           path: app
