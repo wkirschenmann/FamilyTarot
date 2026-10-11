@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Tarot</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <meta name="theme-color" content="#1b5e3a">
   <style>
     :root { color-scheme: light dark; }
     body { font-family: system-ui, sans-serif; margin: 0; padding: 2rem 1rem; text-align: center; }
@@ -15,5 +18,10 @@
   <h1>Tarot — Hello world</h1>
   <p>The GitHub Pages publication chain works.</p>
   <p>Published version: <code id="build">__BUILD__</code></p>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch((err) => console.warn('Service worker registration failed', err));
+    }
+  </script>
 </body>
 </html>
