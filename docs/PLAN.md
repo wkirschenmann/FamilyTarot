@@ -51,6 +51,12 @@ What the workbook analysis confirmed:
 - **Licence**: Apache 2.0. The repository's `LICENSE` file already is; it will be mentioned in the README, and the Preact+htm block, MIT-licensed, keeps its header.
 - **Language**: the repository (code, comments, identifiers, docs, commits, PRs) is in English. User-facing strings stay in French. Data keys in `tarot.json` are English; the examples below use English names.
 
+## Status
+
+- Iteration 1 (lot 0): done: PWA skeleton published on GitHub Pages.
+- Iteration 2 (lots 1 + 2): done: engine (`<script id="engine">`), local UI, IndexedDB, JSON export/import. The engine was replayed against the 3 220 lines of the real workbook (kept out of the repository): 3 213 lines are reproduced exactly (44 of them with the pre-2016 rule set); the 7 others are known oddities of the old file (2 gardes with a gap of −25 on 2015-11-06, 5 petits au bout with an inverted sign) that the import will freeze as `historical`.
+- Pousse is disabled in all presets with coefficient 1 (the workbook had 1.5, which is not an integer).
+
 ## Repository structure
 
 ```
@@ -100,7 +106,7 @@ README.md
 - **`contractScores(rules, deal)`**:
   - D = (B + E) × C, rounded according to `roundOn`.
   - With 5 or more active players and a distinct partner: taker 2D, partner D, opponents −D, with sign s applied to all.
-  - Self-call: taker 4D.
+  - Self-call: taker 4D (the partner column is 0).
   - The calculation only uses integer additions and multiplications. Only the rounding divides, by 1, 5 or 10, and its result is always an integer.
   - With 4 or fewer active players: taker (n−1)D.
   - Dead players score 0.
@@ -115,7 +121,7 @@ README.md
 - **Dealer and passed deals**:
   - `expectedDealer` rotates in table order among present players.
   - `insertPassesUntil(dealer)` loops over the table: 4 passed deals in the §3 example.
-  - Goulasch replaces the passed deal when it is enabled.
+  - Passed deals are added even when the Goulasch is enabled (acceptance criterion 7); a skipped deal that was really a Goulasch is then edited into one. The first deal of a game is free: no passed deal is added before it.
 - **Input validation**:
   - The winner must differ from the loser, and a dead player is refused.
   - The point difference is an integer from 0 to 91.

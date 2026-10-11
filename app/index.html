@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,20 +8,1342 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <meta name="theme-color" content="#1b5e3a">
   <style>
-    :root { color-scheme: light dark; }
-    body { font-family: system-ui, sans-serif; margin: 0; padding: 2rem 1rem; text-align: center; }
-    h1 { font-size: 2rem; margin-bottom: .5rem; }
-    p { color: GrayText; }
+:root {
+  --bg: #f4f6f3; --fg: #1d2420; --muted: #66726b; --card: #fff; --line: #d9dfda;
+  --green: #1b5e3a; --green-fg: #fff; --pos: #17703f; --neg: #b3261e; --warn: #b26a00; --hatch: #e6e9e6;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121714; --fg: #e8ece9; --muted: #98a59d; --card: #1b221e; --line: #2c3631;
+    --green: #2d8a5a; --pos: #5fd08e; --neg: #ff8a80; --warn: #ffb74d; --hatch: #262e29;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+button, input, select { font: inherit; color: inherit; }
+header.top { background: var(--green); color: var(--green-fg); padding: 10px 14px; display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 5; }
+header.top h1 { font-size: 1.15rem; margin: 0; flex: 1; }
+header.top a, header.top button { color: inherit; }
+main { padding: 12px 14px 40px; max-width: 960px; margin: 0 auto; }
+h2 { font-size: 1.05rem; margin: 18px 0 8px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; margin-bottom: 10px; }
+.card.link { cursor: pointer; }
+.muted { color: var(--muted); font-size: .9rem; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.row.end { justify-content: flex-end; }
+.grow { flex: 1; }
+.btn { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 9px 14px; cursor: pointer; min-height: 42px; }
+.btn.primary { background: var(--green); border-color: var(--green); color: var(--green-fg); }
+.btn.danger { color: var(--neg); }
+.btn.small { padding: 4px 10px; min-height: 32px; font-size: .9rem; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn[aria-pressed=true] { background: var(--green); color: var(--green-fg); border-color: var(--green); }
+.chip { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+.chip[aria-pressed=true] { background: var(--green); color: var(--green-fg); border-color: var(--green); }
+label.field { display: block; margin: 10px 0; }
+label.field > span { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 3px; }
+input[type=text], input[type=number], input[type=date], select { width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); min-height: 42px; }
+.error { background: #fdecea; color: #8a1c14; border: 1px solid #f5c2bd; border-radius: 8px; padding: 8px 10px; margin: 10px 0; }
+@media (prefers-color-scheme: dark) { .error { background: #3a1d1a; color: #ffb4ab; border-color: #6b2c25; } }
+.info { background: #fff6e0; color: #6b4a00; border: 1px solid #f0d9a0; border-radius: 8px; padding: 8px 10px; margin: 10px 0; font-size: .92rem; }
+@media (prefers-color-scheme: dark) { .info { background: #3a3018; color: #ffd98a; border-color: #5e4e22; } }
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
+.modal { background: var(--bg); width: 100%; max-width: 560px; max-height: 92vh; overflow: auto; border-radius: 16px 16px 0 0; padding: 14px; }
+@media (min-width: 700px) { .overlay { align-items: center; } .modal { border-radius: 16px; } }
+.modal h3 { margin: 0 0 6px; font-size: 1.1rem; }
+.sheet-wrap { overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); max-height: 70vh; }
+table.sheet { border-collapse: separate; border-spacing: 0; width: 100%; font-variant-numeric: tabular-nums; }
+.sheet th, .sheet td { border-bottom: 1px solid var(--line); padding: 5px 8px; text-align: right; white-space: nowrap; }
+.sheet thead th { position: sticky; top: 0; background: var(--card); z-index: 2; font-weight: 600; }
+.sheet th.gone { background: repeating-linear-gradient(45deg, var(--hatch) 0 4px, transparent 4px 8px); color: var(--muted); }
+.sheet td.label, .sheet th.label { text-align: left; position: sticky; left: 0; background: var(--card); z-index: 1; min-width: 150px; max-width: 220px; white-space: normal; border-right: 1px solid var(--line); }
+.sheet thead th.label { z-index: 3; }
+.sheet tr.ann td.label { padding-left: 18px; color: var(--muted); }
+.sheet tr.tap { cursor: pointer; }
+.sheet tr.bad td { background: #fdecea; }
+.sheet td.out { background: repeating-linear-gradient(45deg, var(--hatch) 0 4px, transparent 4px 8px); }
+.sheet td.dead { color: var(--muted); }
+.sheet td small { display: block; color: var(--muted); font-size: .72rem; }
+.sheet tfoot td { position: sticky; bottom: 0; background: var(--card); font-weight: 700; border-top: 2px solid var(--line); }
+.sheet tfoot td.label { z-index: 3; }
+.pos { color: var(--pos); } .neg { color: var(--neg); }
+.passed td.label { color: var(--muted); font-style: italic; }
+.seg { display: flex; gap: 8px; }
+.seg .btn { flex: 1; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+table.rules { width: 100%; border-collapse: collapse; font-size: .92rem; }
+table.rules th, table.rules td { padding: 4px 4px; text-align: left; }
+table.rules input[type=number] { min-height: 34px; padding: 4px 6px; }
+details > summary { cursor: pointer; padding: 6px 0; color: var(--muted); }
+.footer { text-align: center; color: var(--muted); font-size: .8rem; margin-top: 24px; }
+header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); color: #fff; }
+.sheet td.label, .sheet th.label { min-width: 128px; max-width: 150px; font-size: .86rem; }
+.sheet th, .sheet td { padding: 5px 6px; }
   </style>
 </head>
 <body>
-  <h1>Tarot — Hello world</h1>
-  <p>The GitHub Pages publication chain works.</p>
-  <p>Published version: <code id="build">__BUILD__</code></p>
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js').catch((err) => console.warn('Service worker registration failed', err));
+<div id="root"></div>
+<script id="engine">
+(function (root) {
+  'use strict';
+
+  // ---------------------------------------------------------------------------
+  // Pure scoring engine: no DOM, no dependency, integers only.
+  // Scores are whole points; the only division is the rounding (by 1, 5 or 10).
+  // User-facing messages (validation errors, labels) are in French.
+  // ---------------------------------------------------------------------------
+
+  const SCHEMA_VERSION = 1;
+  const MIN_PLAYERS = 3;
+  const MAX_PLAYERS = 7;
+  const MAX_POINT_DIFF = 91;
+
+  const CONTRACT_KEYS = ['petite', 'pousse', 'garde', 'gardeSans', 'gardeContre'];
+  const ANNOUNCEMENT_KEYS = [
+    'petitAuBout', 'handful', 'doubleHandful', 'tripleHandful', 'misere', 'slamUnannounced', 'slamAnnounced',
+  ];
+  const LABELS = {
+    petite: 'Petite', pousse: 'Pousse', garde: 'Garde', gardeSans: 'Garde sans', gardeContre: 'Garde contre',
+    goulasch: 'Goulasch', passed: 'Tour passé',
+    petitAuBout: 'Petit au bout', handful: 'Poignée', doubleHandful: 'Double poignée',
+    tripleHandful: 'Triple poignée', misere: 'Misère', slamUnannounced: 'Chelem non annoncé',
+    slamAnnounced: 'Chelem annoncé',
+  };
+
+  // Oudlers (bouts) held -> points needed to succeed.
+  const THRESHOLDS = { 0: 56, 1: 51, 2: 41, 3: 36 };
+
+  let idCounter = 0;
+  let idGenerator = () => {
+    idCounter += 1;
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8) + idCounter.toString(36);
+  };
+  function newId() { return idGenerator(); }
+  function setIdGenerator(fn) { idGenerator = fn; }
+
+  // ------------------------------- rules -------------------------------------
+
+  const contract = (valid, base, coef) => ({ valid, base, coef });
+  const announcement = (valid, base, multiplied, shared, canFail) => ({ valid, base, multiplied, shared, canFail });
+
+  function presetRules() {
+    const fft = {
+      id: 'fft', name: 'FFT', roundTo: 10, roundOn: 'base', split: { taker: 2, partner: 1 },
+      contracts: {
+        petite: contract(true, 25, 1), pousse: contract(false, 0, 0), garde: contract(true, 25, 2),
+        gardeSans: contract(true, 25, 4), gardeContre: contract(true, 25, 6), goulasch: { valid: false, amount: 40 },
+      },
+      announcements: {
+        petitAuBout: announcement(true, 10, true, true, false),
+        handful: announcement(true, 20, false, true, true),
+        doubleHandful: announcement(true, 30, false, true, true),
+        tripleHandful: announcement(true, 40, false, true, true),
+        misere: announcement(false, 0, false, false, false),
+        slamUnannounced: announcement(true, 200, false, true, false),
+        slamAnnounced: announcement(true, 400, false, true, false),
+      },
+    };
+    const oldSchool = {
+      id: 'old-school', name: "À l'ancienne", roundTo: 10, roundOn: 'pts', split: { taker: 2, partner: 1 },
+      contracts: {
+        petite: contract(true, 10, 1), pousse: contract(true, 20, 1), garde: contract(true, 40, 1),
+        gardeSans: contract(true, 80, 1), gardeContre: contract(true, 160, 1), goulasch: { valid: false, amount: 40 },
+      },
+      announcements: {
+        petitAuBout: announcement(true, 10, false, false, false),
+        handful: announcement(true, 10, false, false, true),
+        doubleHandful: announcement(true, 20, false, false, true),
+        tripleHandful: announcement(true, 30, false, false, true),
+        misere: announcement(true, 10, false, false, false),
+        slamUnannounced: announcement(true, 200, false, true, false),
+        slamAnnounced: announcement(true, 400, false, true, false),
+      },
+    };
+    const custom = {
+      id: 'custom', name: 'Personnalisé', roundTo: 1, roundOn: 'pts', split: { taker: 2, partner: 1 },
+      contracts: {
+        petite: contract(true, 25, 1), pousse: contract(false, 25, 1), garde: contract(true, 25, 2),
+        gardeSans: contract(true, 25, 4), gardeContre: contract(true, 25, 6), goulasch: { valid: true, amount: 40 },
+      },
+      announcements: {
+        petitAuBout: announcement(true, 10, true, true, false),
+        handful: announcement(true, 20, false, true, true),
+        doubleHandful: announcement(true, 30, false, true, true),
+        tripleHandful: announcement(true, 40, false, true, true),
+        misere: announcement(true, 10, false, false, false),
+        slamUnannounced: announcement(true, 200, false, true, false),
+        slamAnnounced: announcement(true, 400, false, true, false),
+      },
+    };
+    // Until May 2016 the petit au bout was worth a fixed 10 (not multiplied by the contract).
+    const custom2016 = JSON.parse(JSON.stringify(custom));
+    custom2016.id = 'custom-2016';
+    custom2016.name = 'Personnalisé (avant mai 2016)';
+    custom2016.announcements.petitAuBout.multiplied = false;
+    return [fft, oldSchool, custom, custom2016];
+  }
+
+  /** Returns the list of problems found in a rule set (empty when valid). */
+  function validateRules(rules) {
+    const errors = [];
+    if (![1, 5, 10].includes(rules.roundTo)) errors.push("L'arrondi doit être 1, 5 ou 10.");
+    if (!['pts', 'base', 'total'].includes(rules.roundOn)) errors.push("L'arrondi porte sur les points, la base ou le total.");
+    if (!rules.split || !Number.isInteger(rules.split.taker) || !Number.isInteger(rules.split.partner)
+      || rules.split.taker < 0 || rules.split.partner < 0 || rules.split.taker + rules.split.partner !== 3) {
+      errors.push('Le partage preneur/partenaire doit totaliser 3 parts entières (2/1 par défaut).');
     }
-  </script>
+    for (const key of CONTRACT_KEYS) {
+      const c = rules.contracts[key];
+      if (!Number.isInteger(c.base) || !Number.isInteger(c.coef) || c.base < 0 || c.coef < 0) {
+        errors.push(`${LABELS[key]} : base et coefficient doivent être des entiers positifs.`);
+      }
+    }
+    if (!Number.isInteger(rules.contracts.goulasch.amount) || rules.contracts.goulasch.amount < 0) {
+      errors.push('Goulasch : le montant doit être un entier positif.');
+    }
+    for (const key of ANNOUNCEMENT_KEYS) {
+      if (!Number.isInteger(rules.announcements[key].base) || rules.announcements[key].base < 0) {
+        errors.push(`${LABELS[key]} : la base doit être un entier positif.`);
+      }
+    }
+    return errors;
+  }
+
+  function validContracts(rules) {
+    return CONTRACT_KEYS.filter((k) => rules.contracts[k].valid);
+  }
+  function validAnnouncements(rules) {
+    return ANNOUNCEMENT_KEYS.filter((k) => rules.announcements[k].valid);
+  }
+  function goulaschEnabled(rules) { return !!rules.contracts.goulasch.valid; }
+
+  // ------------------------------ arithmetic ---------------------------------
+
+  /** Round to the nearest multiple of v, halves going up (same as the workbook: Int(x / v + 1/2) * v). */
+  function roundTo(x, v) {
+    return Math.floor((2 * x + v) / (2 * v)) * v;
+  }
+
+  /** Value D paid by each opponent for a contract: (B + E) x C with the rule set's rounding. */
+  function contractValue(rules, contractKey, pointDiff) {
+    const c = rules.contracts[contractKey];
+    const e = pointDiff;
+    switch (rules.roundOn) {
+      case 'pts': return (c.base + roundTo(e, rules.roundTo)) * c.coef;
+      case 'base': return roundTo(c.base + e, rules.roundTo) * c.coef;
+      default: return roundTo((c.base + e) * c.coef, rules.roundTo);
+    }
+  }
+
+  function zeroScores(players) {
+    const scores = {};
+    for (const p of players) scores[p] = 0;
+    return scores;
+  }
+  function activePlayers(deal) { return deal.players.filter((p) => !deal.dead.includes(p)); }
+
+  // ------------------------------ deal scores --------------------------------
+
+  /** Scores of the contract itself (without announcements): { playerId: points }. */
+  function contractScores(rules, deal) {
+    const scores = zeroScores(deal.players);
+    if (deal.type === 'passed') return scores;
+    if (deal.type === 'goulasch') {
+      const v = rules.contracts.goulasch.amount;
+      scores[deal.winner] = v;
+      scores[deal.loser] = -v;
+      return scores;
+    }
+    const d = contractValue(rules, deal.contract, deal.pointDiff);
+    const s = deal.succeeded ? 1 : -1;
+    const n = deal.players.length;
+    const active = activePlayers(deal);
+    if (n <= 4) {
+      for (const p of active) scores[p] = -s * d;
+      scores[deal.taker] = s * d * (n - 1);
+      return scores;
+    }
+    const selfCall = deal.partner === deal.taker;
+    for (const p of active) scores[p] = -s * d;
+    if (selfCall) {
+      scores[deal.taker] = s * d * 4;
+    } else {
+      scores[deal.taker] = s * d * rules.split.taker;
+      scores[deal.partner] = s * d * rules.split.partner;
+    }
+    return scores;
+  }
+
+  /** Scores of one announcement attached to a contract deal. */
+  function announcementScores(rules, deal, ann) {
+    if (deal.type !== 'contract') throw new Error('Une annonce ne peut être rattachée qu\'à un contrat.');
+    const spec = rules.announcements[ann.type];
+    const scores = zeroScores(deal.players);
+    const n = deal.players.length;
+    const active = activePlayers(deal);
+    const b = spec.base * (spec.multiplied ? rules.contracts[deal.contract].coef : 1);
+    let sign = 1;
+    if (spec.canFail && contractScores(rules, deal)[ann.beneficiary] < 0) sign = -1;
+    const ben = ann.beneficiary;
+
+    if (!spec.shared) {
+      for (const p of active) if (p !== ben) { scores[p] = -sign * b; scores[ben] += sign * b; }
+      return scores;
+    }
+    if (n <= 4) {
+      if (ben === deal.taker) {
+        for (const p of active) if (p !== ben) scores[p] = -sign * b;
+        scores[ben] = sign * b * (n - 1);
+      } else {
+        for (const p of active) if (p !== deal.taker) scores[p] = sign * b;
+        scores[deal.taker] = -sign * b * (n - 1);
+      }
+      return scores;
+    }
+    const selfCall = deal.partner === deal.taker;
+    const team = [deal.taker, deal.partner];
+    const opponents = active.filter((p) => !team.includes(p));
+    const takerShare = selfCall ? 4 : rules.split.taker;
+    const partnerShare = selfCall ? 0 : rules.split.partner;
+    if (team.includes(ben)) {
+      scores[deal.taker] = sign * b * takerShare;
+      if (!selfCall) scores[deal.partner] = sign * b * partnerShare;
+      for (const p of opponents) scores[p] = -sign * b;
+    } else {
+      scores[deal.taker] = -sign * b * takerShare;
+      if (!selfCall) scores[deal.partner] = -sign * b * partnerShare;
+      for (const p of opponents) scores[p] = sign * b;
+    }
+    return scores;
+  }
+
+  function sumScores(scores) {
+    let t = 0;
+    for (const k of Object.keys(scores)) t += scores[k];
+    return t;
+  }
+
+  function rulesFor(doc, game, deal) {
+    const id = (deal && deal.rulesId) || game.rulesId;
+    const rules = doc.rules.find((r) => r.id === id);
+    if (!rules) throw new Error(`Règles introuvables : ${id}`);
+    return rules;
+  }
+
+  /**
+   * Recomputes every stored score of a game (contract + announcements) and returns the sheet rows
+   * with running totals. Lines flagged `historical` keep their stored scores.
+   */
+  function recomputeGame(doc, game) {
+    const rows = [];
+    const totals = zeroScores(game.tableOrder);
+    game.deals.forEach((deal, index) => {
+      deal.number = index + 1;
+      const rules = rulesFor(doc, game, deal);
+      if (!deal.historical) deal.scores = contractScores(rules, deal);
+      const lines = [{ deal, ann: null, scores: deal.scores }];
+      for (const ann of deal.announcements || []) {
+        if (!ann.historical) ann.scores = announcementScores(rules, deal, ann);
+        lines.push({ deal, ann, scores: ann.scores });
+      }
+      for (const line of lines) {
+        for (const p of Object.keys(line.scores)) totals[p] = (totals[p] || 0) + line.scores[p];
+        rows.push({
+          dealId: deal.id,
+          annId: line.ann ? line.ann.id : null,
+          number: deal.number,
+          deal,
+          ann: line.ann,
+          scores: line.scores,
+          cumulative: Object.assign({}, totals),
+          balanced: sumScores(line.scores) === 0,
+        });
+      }
+    });
+    return { rows, totals };
+  }
+
+  // ------------------------------- dealers -----------------------------------
+
+  function presentPlayers(game) { return game.tableOrder.filter((p) => game.present.includes(p)); }
+
+  /** Next dealer after `dealerId`, following the table order among present players. */
+  function nextDealer(game, dealerId) {
+    const order = game.tableOrder;
+    const start = order.indexOf(dealerId);
+    for (let i = 1; i <= order.length; i += 1) {
+      const candidate = order[(start + i) % order.length];
+      if (game.present.includes(candidate)) return candidate;
+    }
+    return dealerId;
+  }
+
+  /** Dealer expected for the next deal appended to the game. */
+  function expectedDealer(game) {
+    if (!game.deals.length) return presentPlayers(game)[0];
+    return nextDealer(game, game.deals[game.deals.length - 1].dealer);
+  }
+
+  // ---------------------------- validation -----------------------------------
+
+  /** Validates a deal input; returns a list of French error messages (empty when valid). */
+  function validateDeal(rules, deal) {
+    const errors = [];
+    const n = deal.players.length;
+    if (n < MIN_PLAYERS || n > MAX_PLAYERS) errors.push('Une donne se joue de 3 à 7 joueurs.');
+    if (new Set(deal.players).size !== n) errors.push('Un joueur est présent plusieurs fois.');
+    if (!deal.players.includes(deal.dealer)) errors.push('Le donneur doit faire partie des joueurs de la donne.');
+    if (deal.type === 'passed') return errors;
+    const expectedDead = Math.max(0, n - 5);
+    if (deal.dead.length !== expectedDead) {
+      errors.push(expectedDead === 0 ? 'Aucun mort à moins de 6 joueurs.'
+        : expectedDead === 1 ? 'Il faut indiquer 1 mort à 6 joueurs.' : 'Il faut indiquer 2 morts à 7 joueurs.');
+    }
+    if (new Set(deal.dead).size !== deal.dead.length) errors.push('Le 2e mort doit être différent du 1er.');
+    for (const d of deal.dead) if (!deal.players.includes(d)) errors.push('Un mort ne fait pas partie des joueurs de la donne.');
+    const active = deal.players.filter((p) => !deal.dead.includes(p));
+    const isActive = (p) => !!p && active.includes(p);
+
+    if (deal.type === 'goulasch') {
+      if (!rules.contracts.goulasch.valid && !deal.historical) errors.push("Le Goulasch n'est pas activé dans les règles.");
+      if (!deal.winner || !deal.loser) errors.push('Indiquez le gagnant et le perdant.');
+      else {
+        if (deal.winner === deal.loser) errors.push('Le gagnant et le perdant doivent être différents.');
+        if (!isActive(deal.winner) || !isActive(deal.loser)) errors.push('Un mort ne peut être ni gagnant ni perdant du Goulasch.');
+      }
+      return errors;
+    }
+    if (deal.type !== 'contract') { errors.push('Type de donne inconnu.'); return errors; }
+    if (!CONTRACT_KEYS.includes(deal.contract)) errors.push('Choisissez un contrat.');
+    if (!isActive(deal.taker)) errors.push(deal.dead.includes(deal.taker) ? 'Le preneur ne peut pas être mort.' : 'Choisissez le preneur.');
+    if (n >= 5) {
+      if (!isActive(deal.partner)) errors.push(deal.dead.includes(deal.partner) ? 'Le partenaire ne peut pas être mort.' : 'Choisissez le partenaire.');
+    }
+    if (typeof deal.succeeded !== 'boolean') errors.push('Indiquez si le contrat est réalisé.');
+    if (!Number.isInteger(deal.pointDiff) || deal.pointDiff < 0 || deal.pointDiff > MAX_POINT_DIFF) {
+      errors.push(`L'écart de points doit être un entier de 0 à ${MAX_POINT_DIFF}.`);
+    }
+    return errors;
+  }
+
+  function validateAnnouncement(rules, deal, ann) {
+    const errors = [];
+    if (deal.type !== 'contract') errors.push('Une annonce se rattache à un contrat (pas à un Goulasch ni à un tour passé).');
+    if (!ANNOUNCEMENT_KEYS.includes(ann.type)) errors.push("Choisissez le type d'annonce.");
+    else if (!rules.announcements[ann.type].valid && !ann.historical) errors.push("Cette annonce n'est pas activée dans les règles.");
+    if (!ann.beneficiary || !activePlayers(deal).includes(ann.beneficiary)) {
+      errors.push("Le bénéficiaire doit avoir joué la donne (ni mort ni absent).");
+    }
+    return errors;
+  }
+
+  // ----------------------------- assisted entry ------------------------------
+
+  /** From oudlers held and points scored, deduces `succeeded` and `pointDiff`. */
+  function assistedResult(oudlers, points) {
+    const threshold = THRESHOLDS[oudlers];
+    if (threshold === undefined) throw new Error('Nombre de bouts invalide (0 à 3).');
+    const diff = points - threshold;
+    return { succeeded: diff >= 0, pointDiff: Math.abs(diff) };
+  }
+
+  // ------------------------------ documents ----------------------------------
+
+  function createDocument() {
+    return { schemaVersion: SCHEMA_VERSION, rev: 0, updatedAt: null, players: [], rules: presetRules(), games: [] };
+  }
+
+  /** Upgrades an older document to the current schema (none yet) and rejects unknown ones. */
+  function migrate(doc) {
+    if (!doc || typeof doc !== 'object') throw new Error('Fichier invalide.');
+    if (typeof doc.schemaVersion !== 'number') throw new Error('Fichier invalide : schemaVersion manquant.');
+    if (doc.schemaVersion > SCHEMA_VERSION) throw new Error('Ce fichier vient d\'une version plus récente de l\'application.');
+    for (const key of ['players', 'rules', 'games']) {
+      if (!Array.isArray(doc[key])) throw new Error(`Fichier invalide : "${key}" manquant.`);
+    }
+    return doc;
+  }
+
+  function findOrAddPlayer(doc, firstName) {
+    const name = firstName.trim();
+    if (!name) throw new Error('Le prénom est vide.');
+    const existing = doc.players.find((p) => p.firstName.toLowerCase() === name.toLowerCase());
+    if (existing) return existing;
+    const player = { id: newId(), firstName: name };
+    doc.players.push(player);
+    return player;
+  }
+
+  function playerName(doc, id) {
+    const p = doc.players.find((x) => x.id === id);
+    return p ? p.firstName : '?';
+  }
+
+  // -------------------------------- games ------------------------------------
+
+  /** Creates a game; the previous in-progress game, if any, is archived. */
+  function createGame(doc, { date, rulesId, playerIds }) {
+    if (playerIds.length < MIN_PLAYERS || playerIds.length > MAX_PLAYERS) throw new Error('Une partie réunit 3 à 7 joueurs.');
+    if (new Set(playerIds).size !== playerIds.length) throw new Error('Un joueur est présent plusieurs fois.');
+    if (!doc.rules.some((r) => r.id === rulesId)) throw new Error('Jeu de règles inconnu.');
+    for (const g of doc.games) if (g.state === 'in_progress') g.state = 'archived';
+    const game = {
+      id: newId(), date, rulesId, state: 'in_progress',
+      tableOrder: playerIds.slice(), present: playerIds.slice(), deals: [],
+    };
+    doc.games.push(game);
+    return game;
+  }
+
+  function currentGame(doc) { return doc.games.find((g) => g.state === 'in_progress') || null; }
+
+  function checkedDeal(rules, deal) {
+    const errors = validateDeal(rules, deal);
+    if (errors.length) throw new Error(errors.join(' '));
+    return deal;
+  }
+
+  function buildDeal(game, input, rulesId) {
+    const deal = {
+      id: input.id || newId(),
+      number: 0,
+      dealer: input.dealer,
+      type: input.type,
+      rulesId,
+      players: input.players.slice(),
+      dead: (input.dead || []).slice(),
+      announcements: input.announcements || [],
+      scores: {},
+    };
+    if (input.type === 'contract') {
+      deal.contract = input.contract;
+      deal.taker = input.taker;
+      deal.partner = input.players.length >= 5 ? input.partner : null;
+      deal.succeeded = input.succeeded;
+      deal.pointDiff = input.pointDiff;
+    } else if (input.type === 'goulasch') {
+      deal.winner = input.winner;
+      deal.loser = input.loser;
+    }
+    return deal;
+  }
+
+  /**
+   * Appends a deal. If the chosen dealer differs from the expected one, a passed deal is added for every
+   * skipped dealer, looping around the table (a passed deal that was really a Goulasch is then edited).
+   * The very first deal of a game is free: no passed deal is added before it.
+   * Returns { deal, passes }.
+   */
+  function addDeal(doc, game, input) {
+    const rules = rulesFor(doc, game);
+    const deal = checkedDeal(rules, buildDeal(game, input, game.rulesId));
+    const passes = [];
+    if (game.deals.length) {
+      let d = expectedDealer(game);
+      for (let guard = 0; d !== deal.dealer && guard < game.tableOrder.length; guard += 1) {
+        passes.push({
+          id: newId(), number: 0, dealer: d, type: 'passed', rulesId: game.rulesId,
+          players: presentPlayers(game), dead: [], announcements: [], scores: {},
+        });
+        d = nextDealer(game, d);
+      }
+    }
+    for (const p of passes) game.deals.push(p);
+    game.deals.push(deal);
+    recomputeGame(doc, game);
+    return { deal, passes };
+  }
+
+  /** Inserts a forgotten deal after `afterDealId` (null = at the very beginning). No passed deals are added. */
+  function insertDealAfter(doc, game, afterDealId, input) {
+    const rules = rulesFor(doc, game);
+    const deal = checkedDeal(rules, buildDeal(game, input, game.rulesId));
+    const index = afterDealId ? game.deals.findIndex((d) => d.id === afterDealId) + 1 : 0;
+    if (afterDealId && index === 0) throw new Error('Donne introuvable.');
+    game.deals.splice(index, 0, deal);
+    recomputeGame(doc, game);
+    return deal;
+  }
+
+  function findDeal(game, dealId) {
+    const deal = game.deals.find((d) => d.id === dealId);
+    if (!deal) throw new Error('Donne introuvable.');
+    return deal;
+  }
+
+  /**
+   * Replaces the content of a deal. Changing between a contract and a Goulasch (or a passed deal)
+   * removes its announcements. Announcements whose beneficiary is no longer active are rejected.
+   */
+  function updateDeal(doc, game, dealId, input) {
+    const old = findDeal(game, dealId);
+    const rules = rulesFor(doc, game, old);
+    const keep = input.type === 'contract' && old.type === 'contract' ? old.announcements : [];
+    const fresh = buildDeal(game, Object.assign({}, input, { id: old.id, announcements: keep }), old.rulesId);
+    if (old.historical) fresh.historical = false;
+    checkedDeal(rules, fresh);
+    for (const ann of fresh.announcements) {
+      const errors = validateAnnouncement(rules, fresh, ann);
+      if (errors.length) throw new Error(errors.join(' '));
+    }
+    game.deals[game.deals.indexOf(old)] = fresh;
+    recomputeGame(doc, game);
+    return fresh;
+  }
+
+  function deleteDeal(doc, game, dealId) {
+    const deal = findDeal(game, dealId);
+    game.deals.splice(game.deals.indexOf(deal), 1);
+    recomputeGame(doc, game);
+  }
+
+  function addAnnouncement(doc, game, dealId, { type, beneficiary }) {
+    const deal = findDeal(game, dealId);
+    const ann = { id: newId(), type, beneficiary, scores: {} };
+    const errors = validateAnnouncement(rulesFor(doc, game, deal), deal, ann);
+    if (errors.length) throw new Error(errors.join(' '));
+    deal.announcements.push(ann);
+    recomputeGame(doc, game);
+    return ann;
+  }
+
+  function findAnnouncement(deal, annId) {
+    const ann = deal.announcements.find((a) => a.id === annId);
+    if (!ann) throw new Error('Annonce introuvable.');
+    return ann;
+  }
+
+  function updateAnnouncement(doc, game, dealId, annId, { type, beneficiary }) {
+    const deal = findDeal(game, dealId);
+    const ann = findAnnouncement(deal, annId);
+    const next = { id: ann.id, type, beneficiary, scores: {} };
+    const errors = validateAnnouncement(rulesFor(doc, game, deal), deal, next);
+    if (errors.length) throw new Error(errors.join(' '));
+    deal.announcements[deal.announcements.indexOf(ann)] = next;
+    recomputeGame(doc, game);
+    return next;
+  }
+
+  function deleteAnnouncement(doc, game, dealId, annId) {
+    const deal = findDeal(game, dealId);
+    deal.announcements.splice(deal.announcements.indexOf(findAnnouncement(deal, annId)), 1);
+    recomputeGame(doc, game);
+  }
+
+  /** Sets who is still at the table for the following deals (departed players keep their column). */
+  function setPresentPlayers(game, playerIds) {
+    if (playerIds.length < MIN_PLAYERS || playerIds.length > MAX_PLAYERS) throw new Error('Il faut entre 3 et 7 joueurs à table.');
+    for (const p of playerIds) if (!game.tableOrder.includes(p)) throw new Error('Joueur inconnu dans cette partie.');
+    game.present = game.tableOrder.filter((p) => playerIds.includes(p));
+  }
+
+  /** Seats a new player after `afterPlayerId` in the table order and marks them present. */
+  function addPlayerToTable(game, playerId, afterPlayerId) {
+    if (game.tableOrder.includes(playerId)) {
+      if (!game.present.includes(playerId)) game.present.push(playerId);
+      game.present = game.tableOrder.filter((p) => game.present.includes(p));
+      return;
+    }
+    if (game.present.length >= MAX_PLAYERS) throw new Error('Une partie réunit 7 joueurs au maximum.');
+    const at = game.tableOrder.indexOf(afterPlayerId);
+    game.tableOrder.splice(at < 0 ? game.tableOrder.length : at + 1, 0, playerId);
+    game.present.push(playerId);
+    game.present = game.tableOrder.filter((p) => game.present.includes(p));
+  }
+
+  /**
+   * Changes the rules of a game. The edited rule set is stored as a new version (rule sets are never
+   * modified in place). scope 'following': only deals added from now on use it; 'all': recalculates everything.
+   */
+  function changeRules(doc, game, newRules, scope) {
+    const errors = validateRules(newRules);
+    if (errors.length) throw new Error(errors.join(' '));
+    const version = Object.assign({}, JSON.parse(JSON.stringify(newRules)), { id: newId() });
+    doc.rules.push(version);
+    if (scope === 'all') for (const d of game.deals) d.rulesId = version.id;
+    game.rulesId = version.id;
+    recomputeGame(doc, game);
+    return version;
+  }
+
+  function endGame(game) { game.state = 'archived'; }
+
+  /** Final ranking of a game: [{ playerId, total }] best first. */
+  function ranking(doc, game) {
+    const { totals } = recomputeGame(doc, game);
+    return Object.keys(totals).map((playerId) => ({ playerId, total: totals[playerId] })).sort((a, b) => b.total - a.total);
+  }
+
+  root.TarotEngine = {
+    SCHEMA_VERSION, MIN_PLAYERS, MAX_PLAYERS, MAX_POINT_DIFF, CONTRACT_KEYS, ANNOUNCEMENT_KEYS, LABELS, THRESHOLDS,
+    newId, setIdGenerator,
+    presetRules, validateRules, validContracts, validAnnouncements, goulaschEnabled,
+    roundTo, contractValue, contractScores, announcementScores, sumScores, activePlayers, rulesFor,
+    recomputeGame, presentPlayers, nextDealer, expectedDealer,
+    validateDeal, validateAnnouncement, assistedResult,
+    createDocument, migrate, findOrAddPlayer, playerName,
+    createGame, currentGame, addDeal, insertDealAfter, updateDeal, deleteDeal,
+    addAnnouncement, updateAnnouncement, deleteAnnouncement,
+    setPresentPlayers, addPlayerToTable, changeRules, endGame, ranking,
+  };
+}(globalThis));
+</script>
+<script id="vendor-preact">
+/*! htm 3.1.1 (Apache-2.0, Jason Miller) + preact 10.24.3 (MIT, Jason Miller): htm/preact/standalone.umd.js, unmodified */
+!function(e,n){"object"==typeof exports&&"undefined"!=typeof module?n(exports):"function"==typeof define&&define.amd?define(["exports"],n):n(e.htmPreact={})}(this,function(e){var n,_,t,o,r,u,l,i={},c=[],f=/acit|ex(?:s|g|n|p|$)|rph|grid|ows|mnc|ntw|ine[ch]|zoo|^ord|itera/i;function s(e,n){for(var _ in n)e[_]=n[_];return e}function a(e){var n=e.parentNode;n&&n.removeChild(e)}function p(e,_,t){var o,r,u,l={};for(u in _)"key"==u?o=_[u]:"ref"==u?r=_[u]:l[u]=_[u];if(arguments.length>2&&(l.children=arguments.length>3?n.call(arguments,2):t),"function"==typeof e&&null!=e.defaultProps)for(u in e.defaultProps)void 0===l[u]&&(l[u]=e.defaultProps[u]);return h(e,l,o,r,null)}function h(e,n,o,r,u){var l={type:e,props:n,key:o,ref:r,__k:null,__:null,__b:0,__e:null,__d:void 0,__c:null,__h:null,constructor:void 0,__v:null==u?++t:u};return null!=_.vnode&&_.vnode(l),l}function d(e){return e.children}function v(e,n){this.props=e,this.context=n}function y(e,n){if(null==n)return e.__?y(e.__,e.__.__k.indexOf(e)+1):null;for(var _;n<e.__k.length;n++)if(null!=(_=e.__k[n])&&null!=_.__e)return _.__e;return"function"==typeof e.type?y(e):null}function m(e){var n,_;if(null!=(e=e.__)&&null!=e.__c){for(e.__e=e.__c.base=null,n=0;n<e.__k.length;n++)if(null!=(_=e.__k[n])&&null!=_.__e){e.__e=e.__c.base=_.__e;break}return m(e)}}function g(e){(!e.__d&&(e.__d=!0)&&o.push(e)&&!k.__r++||u!==_.debounceRendering)&&((u=_.debounceRendering)||r)(k)}function k(){for(var e;k.__r=o.length;)e=o.sort(function(e,n){return e.__v.__b-n.__v.__b}),o=[],e.some(function(e){var n,_,t,o,r,u;e.__d&&(r=(o=(n=e).__v).__e,(u=n.__P)&&(_=[],(t=s({},o)).__v=o.__v+1,D(u,o,t,n.__n,void 0!==u.ownerSVGElement,null!=o.__h?[r]:null,_,null==r?y(o):r,o.__h),w(_,o),o.__e!=r&&m(o)))})}function b(e,n,_,t,o,r,u,l,f,s){var a,p,v,m,g,k,b,H=t&&t.__k||c,E=H.length;for(_.__k=[],a=0;a<n.length;a++)if(null!=(m=_.__k[a]=null==(m=n[a])||"boolean"==typeof m?null:"string"==typeof m||"number"==typeof m||"bigint"==typeof m?h(null,m,null,null,m):Array.isArray(m)?h(d,{children:m},null,null,null):m.__b>0?h(m.type,m.props,m.key,null,m.__v):m)){if(m.__=_,m.__b=_.__b+1,null===(v=H[a])||v&&m.key==v.key&&m.type===v.type)H[a]=void 0;else for(p=0;p<E;p++){if((v=H[p])&&m.key==v.key&&m.type===v.type){H[p]=void 0;break}v=null}D(e,m,v=v||i,o,r,u,l,f,s),g=m.__e,(p=m.ref)&&v.ref!=p&&(b||(b=[]),v.ref&&b.push(v.ref,null,m),b.push(p,m.__c||g,m)),null!=g?(null==k&&(k=g),"function"==typeof m.type&&null!=m.__k&&m.__k===v.__k?m.__d=f=C(m,f,e):f=x(e,m,v,H,g,f),s||"option"!==_.type?"function"==typeof _.type&&(_.__d=f):e.value=""):f&&v.__e==f&&f.parentNode!=e&&(f=y(v))}for(_.__e=k,a=E;a--;)null!=H[a]&&("function"==typeof _.type&&null!=H[a].__e&&H[a].__e==_.__d&&(_.__d=y(t,a+1)),A(H[a],H[a]));if(b)for(a=0;a<b.length;a++)U(b[a],b[++a],b[++a])}function C(e,n,_){var t,o;for(t=0;t<e.__k.length;t++)(o=e.__k[t])&&(o.__=e,n="function"==typeof o.type?C(o,n,_):x(_,o,o,e.__k,o.__e,n));return n}function x(e,n,_,t,o,r){var u,l,i;if(void 0!==n.__d)u=n.__d,n.__d=void 0;else if(null==_||o!=r||null==o.parentNode)e:if(null==r||r.parentNode!==e)e.appendChild(o),u=null;else{for(l=r,i=0;(l=l.nextSibling)&&i<t.length;i+=2)if(l==o)break e;e.insertBefore(o,r),u=r}return void 0!==u?u:o.nextSibling}function H(e,n,_){"-"===n[0]?e.setProperty(n,_):e[n]=null==_?"":"number"!=typeof _||f.test(n)?_:_+"px"}function E(e,n,_,t,o){var r;e:if("style"===n)if("string"==typeof _)e.style.cssText=_;else{if("string"==typeof t&&(e.style.cssText=t=""),t)for(n in t)_&&n in _||H(e.style,n,"");if(_)for(n in _)t&&_[n]===t[n]||H(e.style,n,_[n])}else if("o"===n[0]&&"n"===n[1])r=n!==(n=n.replace(/Capture$/,"")),n=n.toLowerCase()in e?n.toLowerCase().slice(2):n.slice(2),e.l||(e.l={}),e.l[n+r]=_,_?t||e.addEventListener(n,r?S:P,r):e.removeEventListener(n,r?S:P,r);else if("dangerouslySetInnerHTML"!==n){if(o)n=n.replace(/xlink[H:h]/,"h").replace(/sName$/,"s");else if("href"!==n&&"list"!==n&&"form"!==n&&"tabIndex"!==n&&"download"!==n&&n in e)try{e[n]=null==_?"":_;break e}catch(e){}"function"==typeof _||(null!=_&&(!1!==_||"a"===n[0]&&"r"===n[1])?e.setAttribute(n,_):e.removeAttribute(n))}}function P(e){this.l[e.type+!1](_.event?_.event(e):e)}function S(e){this.l[e.type+!0](_.event?_.event(e):e)}function D(e,n,t,o,r,u,l,i,c){var f,a,p,h,y,m,g,k,C,x,H,E=n.type;if(void 0!==n.constructor)return null;null!=t.__h&&(c=t.__h,i=n.__e=t.__e,n.__h=null,u=[i]),(f=_.__b)&&f(n);try{e:if("function"==typeof E){if(k=n.props,C=(f=E.contextType)&&o[f.__c],x=f?C?C.props.value:f.__:o,t.__c?g=(a=n.__c=t.__c).__=a.__E:("prototype"in E&&E.prototype.render?n.__c=a=new E(k,x):(n.__c=a=new v(k,x),a.constructor=E,a.render=M),C&&C.sub(a),a.props=k,a.state||(a.state={}),a.context=x,a.__n=o,p=a.__d=!0,a.__h=[]),null==a.__s&&(a.__s=a.state),null!=E.getDerivedStateFromProps&&(a.__s==a.state&&(a.__s=s({},a.__s)),s(a.__s,E.getDerivedStateFromProps(k,a.__s))),h=a.props,y=a.state,p)null==E.getDerivedStateFromProps&&null!=a.componentWillMount&&a.componentWillMount(),null!=a.componentDidMount&&a.__h.push(a.componentDidMount);else{if(null==E.getDerivedStateFromProps&&k!==h&&null!=a.componentWillReceiveProps&&a.componentWillReceiveProps(k,x),!a.__e&&null!=a.shouldComponentUpdate&&!1===a.shouldComponentUpdate(k,a.__s,x)||n.__v===t.__v){a.props=k,a.state=a.__s,n.__v!==t.__v&&(a.__d=!1),a.__v=n,n.__e=t.__e,n.__k=t.__k,n.__k.forEach(function(e){e&&(e.__=n)}),a.__h.length&&l.push(a);break e}null!=a.componentWillUpdate&&a.componentWillUpdate(k,a.__s,x),null!=a.componentDidUpdate&&a.__h.push(function(){a.componentDidUpdate(h,y,m)})}a.context=x,a.props=k,a.state=a.__s,(f=_.__r)&&f(n),a.__d=!1,a.__v=n,a.__P=e,f=a.render(a.props,a.state,a.context),a.state=a.__s,null!=a.getChildContext&&(o=s(s({},o),a.getChildContext())),p||null==a.getSnapshotBeforeUpdate||(m=a.getSnapshotBeforeUpdate(h,y)),H=null!=f&&f.type===d&&null==f.key?f.props.children:f,b(e,Array.isArray(H)?H:[H],n,t,o,r,u,l,i,c),a.base=n.__e,n.__h=null,a.__h.length&&l.push(a),g&&(a.__E=a.__=null),a.__e=!1}else null==u&&n.__v===t.__v?(n.__k=t.__k,n.__e=t.__e):n.__e=T(t.__e,n,t,o,r,u,l,c);(f=_.diffed)&&f(n)}catch(e){n.__v=null,(c||null!=u)&&(n.__e=i,n.__h=!!c,u[u.indexOf(i)]=null),_.__e(e,n,t)}}function w(e,n){_.__c&&_.__c(n,e),e.some(function(n){try{e=n.__h,n.__h=[],e.some(function(e){e.call(n)})}catch(e){_.__e(e,n.__v)}})}function T(e,_,t,o,r,u,l,c){var f,s,p,h=t.props,d=_.props,v=_.type,m=0;if("svg"===v&&(r=!0),null!=u)for(;m<u.length;m++)if((f=u[m])&&(f===e||(v?f.localName==v:3==f.nodeType))){e=f,u[m]=null;break}if(null==e){if(null===v)return document.createTextNode(d);e=r?document.createElementNS("http://www.w3.org/2000/svg",v):document.createElement(v,d.is&&d),u=null,c=!1}if(null===v)h===d||c&&e.data===d||(e.data=d);else{if(u=u&&n.call(e.childNodes),s=(h=t.props||i).dangerouslySetInnerHTML,p=d.dangerouslySetInnerHTML,!c){if(null!=u)for(h={},m=0;m<e.attributes.length;m++)h[e.attributes[m].name]=e.attributes[m].value;(p||s)&&(p&&(s&&p.__html==s.__html||p.__html===e.innerHTML)||(e.innerHTML=p&&p.__html||""))}if(function(e,n,_,t,o){var r;for(r in _)"children"===r||"key"===r||r in n||E(e,r,null,_[r],t);for(r in n)o&&"function"!=typeof n[r]||"children"===r||"key"===r||"value"===r||"checked"===r||_[r]===n[r]||E(e,r,n[r],_[r],t)}(e,d,h,r,c),p)_.__k=[];else if(m=_.props.children,b(e,Array.isArray(m)?m:[m],_,t,o,r&&"foreignObject"!==v,u,l,u?u[0]:t.__k&&y(t,0),c),null!=u)for(m=u.length;m--;)null!=u[m]&&a(u[m]);c||("value"in d&&void 0!==(m=d.value)&&(m!==e.value||"progress"===v&&!m)&&E(e,"value",m,h.value,!1),"checked"in d&&void 0!==(m=d.checked)&&m!==e.checked&&E(e,"checked",m,h.checked,!1))}return e}function U(e,n,t){try{"function"==typeof e?e(n):e.current=n}catch(e){_.__e(e,t)}}function A(e,n,t){var o,r;if(_.unmount&&_.unmount(e),(o=e.ref)&&(o.current&&o.current!==e.__e||U(o,null,n)),null!=(o=e.__c)){if(o.componentWillUnmount)try{o.componentWillUnmount()}catch(e){_.__e(e,n)}o.base=o.__P=null}if(o=e.__k)for(r=0;r<o.length;r++)o[r]&&A(o[r],n,"function"!=typeof e.type);t||null==e.__e||a(e.__e),e.__e=e.__d=void 0}function M(e,n,_){return this.constructor(e,_)}n=c.slice,_={__e:function(e,n){for(var _,t,o;n=n.__;)if((_=n.__c)&&!_.__)try{if((t=_.constructor)&&null!=t.getDerivedStateFromError&&(_.setState(t.getDerivedStateFromError(e)),o=_.__d),null!=_.componentDidCatch&&(_.componentDidCatch(e),o=_.__d),o)return _.__E=_}catch(n){e=n}throw e}},t=0,v.prototype.setState=function(e,n){var _;_=null!=this.__s&&this.__s!==this.state?this.__s:this.__s=s({},this.state),"function"==typeof e&&(e=e(s({},_),this.props)),e&&s(_,e),null!=e&&this.__v&&(n&&this.__h.push(n),g(this))},v.prototype.forceUpdate=function(e){this.__v&&(this.__e=!0,e&&this.__h.push(e),g(this))},v.prototype.render=d,o=[],r="function"==typeof Promise?Promise.prototype.then.bind(Promise.resolve()):setTimeout,k.__r=0,l=0;var F,L,N,W=0,R=[],I=_.__b,O=_.__r,V=_.diffed,q=_.__c,B=_.unmount;function $(e,n){_.__h&&_.__h(L,e,W||n),W=0;var t=L.__H||(L.__H={__:[],__h:[]});return e>=t.__.length&&t.__.push({}),t.__[e]}function j(e){return W=1,G(ee,e)}function G(e,n,_){var t=$(F++,2);return t.t=e,t.__c||(t.__=[_?_(n):ee(void 0,n),function(e){var n=t.t(t.__[0],e);t.__[0]!==n&&(t.__=[n,t.__[1]],t.__c.setState({}))}],t.__c=L),t.__}function z(e,n){var t=$(F++,4);!_.__s&&Z(t.__H,n)&&(t.__=e,t.__H=n,L.__h.push(t))}function J(e,n){var _=$(F++,7);return Z(_.__H,n)&&(_.__=e(),_.__H=n,_.__h=e),_.__}function K(){R.forEach(function(e){if(e.__P)try{e.__H.__h.forEach(X),e.__H.__h.forEach(Y),e.__H.__h=[]}catch(n){e.__H.__h=[],_.__e(n,e.__v)}}),R=[]}_.__b=function(e){L=null,I&&I(e)},_.__r=function(e){O&&O(e),F=0;var n=(L=e.__c).__H;n&&(n.__h.forEach(X),n.__h.forEach(Y),n.__h=[])},_.diffed=function(e){V&&V(e);var n=e.__c;n&&n.__H&&n.__H.__h.length&&(1!==R.push(n)&&N===_.requestAnimationFrame||((N=_.requestAnimationFrame)||function(e){var n,_=function(){clearTimeout(t),Q&&cancelAnimationFrame(n),setTimeout(e)},t=setTimeout(_,100);Q&&(n=requestAnimationFrame(_))})(K)),L=void 0},_.__c=function(e,n){n.some(function(e){try{e.__h.forEach(X),e.__h=e.__h.filter(function(e){return!e.__||Y(e)})}catch(t){n.some(function(e){e.__h&&(e.__h=[])}),n=[],_.__e(t,e.__v)}}),q&&q(e,n)},_.unmount=function(e){B&&B(e);var n=e.__c;if(n&&n.__H)try{n.__H.__.forEach(X)}catch(e){_.__e(e,n.__v)}};var Q="function"==typeof requestAnimationFrame;function X(e){var n=L;"function"==typeof e.__c&&e.__c(),L=n}function Y(e){var n=L;e.__c=e.__(),L=n}function Z(e,n){return!e||e.length!==n.length||n.some(function(n,_){return n!==e[_]})}function ee(e,n){return"function"==typeof n?n(e):n}var ne=function(e,n,_,t){var o;n[0]=0;for(var r=1;r<n.length;r++){var u=n[r++],l=n[r]?(n[0]|=u?1:2,_[n[r++]]):n[++r];3===u?t[0]=l:4===u?t[1]=Object.assign(t[1]||{},l):5===u?(t[1]=t[1]||{})[n[++r]]=l:6===u?t[1][n[++r]]+=l+"":u?(o=e.apply(l,ne(e,l,_,["",null])),t.push(o),l[0]?n[0]|=2:(n[r-2]=0,n[r]=o)):t.push(l)}return t},_e=new Map,te=function(e){var n=_e.get(this);return n||(n=new Map,_e.set(this,n)),(n=ne(this,n.get(e)||(n.set(e,n=function(e){for(var n,_,t=1,o="",r="",u=[0],l=function(e){1===t&&(e||(o=o.replace(/^\s*\n\s*|\s*\n\s*$/g,"")))?u.push(0,e,o):3===t&&(e||o)?(u.push(3,e,o),t=2):2===t&&"..."===o&&e?u.push(4,e,0):2===t&&o&&!e?u.push(5,0,!0,o):t>=5&&((o||!e&&5===t)&&(u.push(t,0,o,_),t=6),e&&(u.push(t,e,0,_),t=6)),o=""},i=0;i<e.length;i++){i&&(1===t&&l(),l(i));for(var c=0;c<e[i].length;c++)n=e[i][c],1===t?"<"===n?(l(),u=[u],t=3):o+=n:4===t?"--"===o&&">"===n?(t=1,o=""):o=n+o[0]:r?n===r?r="":o+=n:'"'===n||"'"===n?r=n:">"===n?(l(),t=1):t&&("="===n?(t=5,_=o,o=""):"/"===n&&(t<5||">"===e[i][c+1])?(l(),3===t&&(u=u[0]),t=u,(u=u[0]).push(2,0,t),t=0):" "===n||"\t"===n||"\n"===n||"\r"===n?(l(),t=2):o+=n),3===t&&"!--"===o&&(t=4,u=u[0])}return l(),u}(e)),n),arguments,[])).length>1?n:n[0]}.bind(p);e.h=p,e.html=te,e.render=function(e,t,o){var r,u,l;_.__&&_.__(e,t),u=(r="function"==typeof o)?null:o&&o.__k||t.__k,l=[],D(t,e=(!r&&o||t).__k=p(d,null,[e]),u||i,i,void 0!==t.ownerSVGElement,!r&&o?[o]:u?null:t.firstChild?n.call(t.childNodes):null,l,!r&&o?o:u?u.__e:t.firstChild,r),w(l,e)},e.Component=v,e.createContext=function(e,n){var _={__c:n="__cC"+l++,__:e,Consumer:function(e,n){return e.children(n)},Provider:function(e){var _,t;return this.getChildContext||(_=[],(t={})[n]=this,this.getChildContext=function(){return t},this.shouldComponentUpdate=function(e){this.props.value!==e.value&&_.some(g)},this.sub=function(e){_.push(e);var n=e.componentWillUnmount;e.componentWillUnmount=function(){_.splice(_.indexOf(e),1),n&&n.call(e)}}),e.children}};return _.Provider.__=_.Consumer.contextType=_},e.useState=j,e.useReducer=G,e.useEffect=function(e,n){var t=$(F++,3);!_.__s&&Z(t.__H,n)&&(t.__=e,t.__H=n,L.__H.__h.push(t))},e.useLayoutEffect=z,e.useRef=function(e){return W=5,J(function(){return{current:e}},[])},e.useImperativeHandle=function(e,n,_){W=6,z(function(){"function"==typeof e?e(n()):e&&(e.current=n())},null==_?_:_.concat(e))},e.useMemo=J,e.useCallback=function(e,n){return W=8,J(function(){return e},n)},e.useContext=function(e){var n=L.context[e.__c],_=$(F++,9);return _.c=e,n?(null==_.__&&(_.__=!0,n.sub(L)),n.props.value):e.__},e.useDebugValue=function(e,n){_.useDebugValue&&_.useDebugValue(n?n(e):e)},e.useErrorBoundary=function(e){var n=$(F++,10),_=j();return n.__=e,L.componentDidCatch||(L.componentDidCatch=function(e){n.__&&n.__(e),_[1](e)}),[_[0],function(){_[1](void 0)}]}});
+
+</script>
+<script id="app">
+(function () {
+  'use strict';
+  const { html, render, useState, useEffect, useRef } = window.htmPreact;
+  const E = window.TarotEngine;
+  const BUILD = /^__/.test(window.TAROT_BUILD || '') || !window.TAROT_BUILD ? 'dev' : window.TAROT_BUILD;
+
+  // ------------------------------ storage ------------------------------------
+  // The whole document (tarot.json) lives in one IndexedDB record, written before the screen updates.
+
+  const idb = {
+    db: null,
+    open() {
+      if (this.db) return Promise.resolve(this.db);
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open('tarot', 1);
+        req.onupgradeneeded = () => req.result.createObjectStore('kv');
+        req.onsuccess = () => { this.db = req.result; resolve(req.result); };
+        req.onerror = () => reject(req.error);
+      });
+    },
+    async get(key) {
+      const db = await this.open();
+      return new Promise((resolve, reject) => {
+        const req = db.transaction('kv').objectStore('kv').get(key);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    },
+    async put(key, value) {
+      const db = await this.open();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction('kv', 'readwrite');
+        tx.objectStore('kv').put(value, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
+    },
+  };
+
+  // ------------------------------ helpers ------------------------------------
+
+  const L = E.LABELS;
+  const fmt = (n) => (n < 0 ? '−' + Math.abs(n) : String(n));
+  const cls = (n) => (n > 0 ? 'pos' : n < 0 ? 'neg' : '');
+  const today = () => new Date().toISOString().slice(0, 10);
+  const frDate = (iso) => (iso || '').split('-').reverse().join('/');
+  const clone = (x) => JSON.parse(JSON.stringify(x));
+
+  function dealLabel(doc, deal) {
+    const name = (id) => E.playerName(doc, id);
+    if (deal.type === 'passed') return `${L.passed}`;
+    if (deal.type === 'goulasch') return `${L.goulasch} — ${name(deal.winner)} gagne, ${name(deal.loser)} perd`;
+    let who = name(deal.taker);
+    if (deal.players.length >= 5) who += deal.partner === deal.taker ? ' (s’appelle)' : ` + ${name(deal.partner)}`;
+    return `${L[deal.contract]} — ${who} · ${deal.succeeded ? 'réalisé de' : 'chuté de'} ${deal.pointDiff}`;
+  }
+
+  function download(filename, text) {
+    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  // ------------------------------ UI bricks ----------------------------------
+
+  function Modal({ title, onClose, children }) {
+    return html`<div class="overlay" onClick=${(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div class="modal" role="dialog" aria-label=${title}>
+        <div class="row"><h3 class="grow">${title}</h3><button class="btn small" onClick=${onClose} aria-label="Fermer">✕</button></div>
+        ${children}
+      </div></div>`;
+  }
+
+  function Field({ label, group, children }) {
+    return group
+      ? html`<div class="field" role="group" aria-label=${label}><span>${label}</span>${children}</div>`
+      : html`<label class="field"><span>${label}</span>${children}</label>`;
+  }
+
+  function PlayerSelect({ doc, ids, value, onChange, empty = '— choisir —', exclude = [] }) {
+    return html`<select value=${value || ''} onChange=${(e) => onChange(e.target.value || null)}>
+      <option value="">${empty}</option>
+      ${ids.filter((id) => !exclude.includes(id) || id === value).map((id) => html`<option value=${id} selected=${id === value}>${E.playerName(doc, id)}</option>`)}
+    </select>`;
+  }
+
+  // ------------------------------ deal form ----------------------------------
+
+  function DealForm({ doc, game, deal, afterDealId, onSubmit, onClose }) {
+    const rules = E.rulesFor(doc, game, deal);
+    const editing = !!deal;
+    const inserting = afterDealId !== undefined && !editing;
+    const initialPlayers = editing ? deal.players : E.presentPlayers(game);
+    const contractOptions = E.validContracts(rules).slice();
+    if (editing && deal.type === 'contract' && !contractOptions.includes(deal.contract)) contractOptions.push(deal.contract);
+    const goulasch = E.goulaschEnabled(rules) || (editing && deal.type === 'goulasch');
+
+    const [dealer, setDealer] = useState(editing ? deal.dealer : (inserting
+      ? (afterDealId ? E.nextDealer(game, game.deals.find((d) => d.id === afterDealId).dealer) : E.presentPlayers(game)[0])
+      : E.expectedDealer(game)));
+    const [players, setPlayers] = useState(initialPlayers);
+    const [kind, setKind] = useState(editing ? (deal.type === 'contract' ? deal.contract : deal.type) : contractOptions[0]);
+    const [taker, setTaker] = useState(editing ? deal.taker : null);
+    const [partner, setPartner] = useState(editing ? deal.partner : null);
+    const [dead, setDead] = useState(editing ? deal.dead : []);
+    const [winner, setWinner] = useState(editing ? deal.winner : null);
+    const [loser, setLoser] = useState(editing ? deal.loser : null);
+    const [succeeded, setSucceeded] = useState(editing && deal.type === 'contract' ? deal.succeeded : null);
+    const [diff, setDiff] = useState(editing && deal.type === 'contract' ? String(deal.pointDiff) : '');
+    const [oudlers, setOudlers] = useState(null);
+    const [points, setPoints] = useState('');
+    const [error, setError] = useState('');
+
+    const n = players.length;
+    const deadCount = Math.max(0, n - 5);
+    const active = players.filter((p) => !dead.includes(p));
+    const isGoulasch = kind === 'goulasch';
+    const isPassed = kind === 'passed';
+    const tableOrder = game.tableOrder;
+
+    // Who will be skipped (passed deals) when the dealer differs from the expected one.
+    let skipped = [];
+    if (!editing && !inserting && game.deals.length) {
+      let d = E.expectedDealer(game);
+      for (let i = 0; d !== dealer && i < game.tableOrder.length; i += 1) { skipped.push(d); d = E.nextDealer(game, d); }
+    }
+
+    function togglePlayer(id) {
+      const next = players.includes(id) ? players.filter((p) => p !== id) : tableOrder.filter((p) => players.includes(p) || p === id);
+      setPlayers(next);
+      setDead(dead.filter((p) => next.includes(p)));
+      if (!next.includes(taker)) setTaker(null);
+      if (!next.includes(partner)) setPartner(null);
+      if (!next.includes(winner)) setWinner(null);
+      if (!next.includes(loser)) setLoser(null);
+      if (!next.includes(dealer)) setDealer(next[0] || null);
+    }
+    function setDeadAt(i, id) {
+      const next = dead.slice();
+      if (id) next[i] = id; else next.splice(i, 1);
+      setDead(next.filter(Boolean));
+    }
+    function applyAssist() {
+      try {
+        const r = E.assistedResult(oudlers, parseInt(points, 10));
+        if (!Number.isFinite(parseInt(points, 10))) throw new Error('Indiquez les points réalisés.');
+        setSucceeded(r.succeeded); setDiff(String(r.pointDiff)); setError('');
+      } catch (e) { setError(e.message); }
+    }
+
+    async function submit() {
+      const input = { dealer, players, dead };
+      if (isPassed) input.type = 'passed';
+      else if (isGoulasch) Object.assign(input, { type: 'goulasch', winner, loser });
+      else {
+        Object.assign(input, {
+          type: 'contract', contract: kind, taker, partner: n >= 5 ? partner : null, succeeded,
+          pointDiff: diff === '' ? NaN : Number(diff),
+        });
+      }
+      if (isPassed) input.dead = [];
+      const res = await onSubmit(input);
+      if (res && res.error) setError(res.error);
+    }
+
+    return html`<${Modal} title=${editing ? `Modifier la donne ${deal.number}` : inserting ? 'Rajouter une donne oubliée' : 'Nouvelle donne'} onClose=${onClose}>
+      <${Field} label="Donneur">
+        <${PlayerSelect} doc=${doc} ids=${players} value=${dealer} onChange=${setDealer} />
+      <//>
+      ${skipped.length ? html`<div class="info">${skipped.length} tour${skipped.length > 1 ? 's' : ''} passé${skipped.length > 1 ? 's' : ''} ajouté${skipped.length > 1 ? 's' : ''} automatiquement (${skipped.map((p) => E.playerName(doc, p)).join(', ')}).
+        ${goulasch ? ' Si l’un d’eux était un Goulasch, modifiez-le ensuite.' : ''}</div>` : null}
+      <${Field} label="Contrat">
+        <select value=${kind} onChange=${(e) => setKind(e.target.value)}>
+          ${contractOptions.map((k) => html`<option value=${k} selected=${k === kind}>${L[k]}</option>`)}
+          ${goulasch ? html`<option value="goulasch" selected=${kind === 'goulasch'}>${L.goulasch}</option>` : null}
+          ${editing ? html`<option value="passed" selected=${kind === 'passed'}>${L.passed}</option>` : null}
+        </select>
+      <//>
+
+      ${isPassed ? null : isGoulasch ? html`
+        <div class="grid2">
+          <${Field} label="Gagnant"><${PlayerSelect} doc=${doc} ids=${active} value=${winner} onChange=${setWinner} exclude=${[loser]} /><//>
+          <${Field} label="Perdant"><${PlayerSelect} doc=${doc} ids=${active} value=${loser} onChange=${setLoser} exclude=${[winner]} /><//>
+        </div>
+        ` : html`
+        <div class="grid2">
+          <${Field} label="Preneur"><${PlayerSelect} doc=${doc} ids=${active} value=${taker} onChange=${setTaker} /><//>
+          ${n >= 5 ? html`<${Field} label="Partenaire (= preneur : s’appelle)"><${PlayerSelect} doc=${doc} ids=${active} value=${partner} onChange=${setPartner} /><//>` : null}
+        </div>
+        <${Field} label="Contrat réalisé ?" group=${true}>
+          <div class="seg">
+            <button class="btn" aria-pressed=${succeeded === true} onClick=${() => setSucceeded(true)}>Oui</button>
+            <button class="btn" aria-pressed=${succeeded === false} onClick=${() => setSucceeded(false)}>Non</button>
+          </div>
+        <//>
+        <${Field} label="Écart de points (0 à ${E.MAX_POINT_DIFF})">
+          <input type="number" inputmode="numeric" min="0" max=${E.MAX_POINT_DIFF} value=${diff} onInput=${(e) => setDiff(e.target.value)} />
+        <//>
+        <details>
+          <summary>Saisie assistée (bouts et points)</summary>
+          <div class="row">
+            ${[0, 1, 2, 3].map((k) => html`<button class="chip" aria-pressed=${oudlers === k} onClick=${() => setOudlers(k)}>${k} bout${k > 1 ? 's' : ''}</button>`)}
+          </div>
+          <div class="row" style="margin-top:8px">
+            <input type="number" inputmode="numeric" placeholder="Points réalisés" style="max-width:12em" value=${points} onInput=${(e) => setPoints(e.target.value)} />
+            <button class="btn" disabled=${oudlers === null} onClick=${applyAssist}>Calculer</button>
+          </div>
+        </details>`}
+
+      ${!isPassed && deadCount > 0 ? html`
+        <div class="grid2">
+          ${Array.from({ length: deadCount }, (_, i) => html`<${Field} label=${deadCount > 1 ? `Mort ${i + 1}` : 'Mort'}>
+            <${PlayerSelect} doc=${doc} ids=${players.filter((p) => p !== taker && p !== partner && p !== winner && p !== loser)} value=${dead[i]} onChange=${(id) => setDeadAt(i, id)} exclude=${dead.filter((_, j) => j !== i)} />
+          <//>`)}
+        </div>` : null}
+
+      <details>
+        <summary>Joueurs de cette donne (${n})</summary>
+        <div class="row">
+          ${tableOrder.map((id) => html`<button class="chip" aria-pressed=${players.includes(id)} onClick=${() => togglePlayer(id)}>${E.playerName(doc, id)}</button>`)}
+        </div>
+      </details>
+
+      ${error ? html`<div class="error" role="alert">${error}</div>` : null}
+      <div class="row end" style="margin-top:12px">
+        <button class="btn" onClick=${onClose}>Annuler</button>
+        <button class="btn primary" onClick=${submit}>${editing ? 'Enregistrer' : 'Valider'}</button>
+      </div>
+    <//>`;
+  }
+
+  // ------------------------------ announcement form --------------------------
+
+  function AnnouncementForm({ doc, game, dealId, ann, onSubmit, onClose }) {
+    const contractDeals = game.deals.filter((d) => d.type === 'contract');
+    const [chosenDeal, setChosenDeal] = useState(dealId || (contractDeals.length ? contractDeals[contractDeals.length - 1].id : null));
+    const deal = game.deals.find((d) => d.id === chosenDeal);
+    const rules = deal ? E.rulesFor(doc, game, deal) : null;
+    const options = rules ? E.validAnnouncements(rules).slice() : [];
+    if (ann && !options.includes(ann.type)) options.push(ann.type);
+    const [type, setType] = useState(ann ? ann.type : options[0]);
+    const [beneficiary, setBeneficiary] = useState(ann ? ann.beneficiary : null);
+    const [error, setError] = useState('');
+    if (!deal) return html`<${Modal} title="Annonce" onClose=${onClose}><p>Ajoutez d’abord un contrat : une annonce se rattache à une donne.</p><//>`;
+    async function submit() {
+      const res = await onSubmit(chosenDeal, { type, beneficiary });
+      if (res && res.error) setError(res.error);
+    }
+    return html`<${Modal} title=${ann ? 'Modifier l’annonce' : 'Nouvelle annonce'} onClose=${onClose}>
+      ${ann ? null : html`<${Field} label="Donne">
+        <select value=${chosenDeal} onChange=${(e) => { setChosenDeal(e.target.value); setBeneficiary(null); }}>
+          ${contractDeals.map((d) => html`<option value=${d.id} selected=${d.id === chosenDeal}>${d.number} — ${dealLabel(doc, d)}</option>`)}
+        </select><//>`}
+      <${Field} label="Annonce">
+        <select value=${type} onChange=${(e) => setType(e.target.value)}>
+          ${options.map((k) => html`<option value=${k} selected=${k === type}>${L[k]}</option>`)}
+        </select>
+      <//>
+      <${Field} label=${type === 'petitAuBout' ? 'Qui a gagné le petit au dernier pli ?' : 'Joueur'}>
+        <${PlayerSelect} doc=${doc} ids=${E.activePlayers(deal)} value=${beneficiary} onChange=${setBeneficiary} />
+      <//>
+      ${error ? html`<div class="error" role="alert">${error}</div>` : null}
+      <div class="row end"><button class="btn" onClick=${onClose}>Annuler</button><button class="btn primary" onClick=${submit}>${ann ? 'Enregistrer' : 'Valider'}</button></div>
+    <//>`;
+  }
+
+  // ------------------------------ players dialog -----------------------------
+
+  function PlayersDialog({ doc, game, onSubmit, onClose }) {
+    const [present, setPresent] = useState(game.present);
+    const [newName, setNewName] = useState('');
+    const [known, setKnown] = useState('');
+    const [after, setAfter] = useState(game.tableOrder[game.tableOrder.length - 1]);
+    const [error, setError] = useState('');
+    const outsiders = doc.players.filter((p) => !game.tableOrder.includes(p.id));
+    const toggle = (id) => setPresent(present.includes(id) ? present.filter((p) => p !== id) : present.concat(id));
+    async function submit() {
+      const res = await onSubmit({ present, newName: newName.trim(), known, after });
+      if (res && res.error) setError(res.error);
+    }
+    return html`<${Modal} title="Arrivées et départs" onClose=${onClose}>
+      <p class="muted">Les joueurs décochés gardent leur colonne et leurs points, mais ne sont plus proposés pour les donnes suivantes.</p>
+      <div class="row">${game.tableOrder.map((id) => html`<button class="chip" aria-pressed=${present.includes(id)} onClick=${() => toggle(id)}>${E.playerName(doc, id)}</button>`)}</div>
+      <h2>Ajouter un joueur</h2>
+      ${outsiders.length ? html`<${Field} label="Joueur déjà connu">
+        <select value=${known} onChange=${(e) => setKnown(e.target.value)}><option value="">—</option>${outsiders.map((p) => html`<option value=${p.id}>${p.firstName}</option>`)}</select><//>` : null}
+      <${Field} label="Ou nouveau prénom"><input type="text" value=${newName} onInput=${(e) => setNewName(e.target.value)} /><//>
+      <${Field} label="Assis après">
+        <${PlayerSelect} doc=${doc} ids=${game.tableOrder} value=${after} onChange=${setAfter} />
+      <//>
+      ${error ? html`<div class="error" role="alert">${error}</div>` : null}
+      <div class="row end"><button class="btn" onClick=${onClose}>Annuler</button><button class="btn primary" onClick=${submit}>Enregistrer</button></div>
+    <//>`;
+  }
+
+  // ------------------------------ rules dialog -------------------------------
+
+  function YesNo({ value, onChange, label }) {
+    return html`<input type="checkbox" checked=${value} aria-label=${label} onChange=${(e) => onChange(e.target.checked)} />`;
+  }
+  const numField = (obj, key, set) => html`<input type="number" inputmode="numeric" min="0" style="width:5em" value=${obj[key]} onInput=${(e) => set(Object.assign({}, obj, { [key]: e.target.value === '' ? NaN : Number(e.target.value) }))} />`;
+
+  function RulesDialog({ doc, game, onSubmit, onClose }) {
+    const [rules, setRules] = useState(clone(E.rulesFor(doc, game)));
+    const [scope, setScope] = useState('following');
+    const [error, setError] = useState('');
+    const upC = (k, v) => setRules(Object.assign({}, rules, { contracts: Object.assign({}, rules.contracts, { [k]: v }) }));
+    const upA = (k, v) => setRules(Object.assign({}, rules, { announcements: Object.assign({}, rules.announcements, { [k]: v }) }));
+    const loadPreset = (id) => { if (id) setRules(clone(E.presetRules().find((r) => r.id === id))); };
+    async function submit() {
+      const res = await onSubmit(rules, scope);
+      if (res && res.error) setError(res.error);
+    }
+    return html`<${Modal} title="Règles de la partie" onClose=${onClose}>
+      <${Field} label="Charger un jeu prédéfini">
+        <select onChange=${(e) => loadPreset(e.target.value)}><option value="">—</option>
+          ${E.presetRules().filter((r) => r.id !== 'custom-2016').map((r) => html`<option value=${r.id}>${r.name}</option>`)}</select>
+      <//>
+      <div class="grid2">
+        <${Field} label="Arrondi à"><select value=${rules.roundTo} onChange=${(e) => setRules(Object.assign({}, rules, { roundTo: Number(e.target.value) }))}>
+          ${[1, 5, 10].map((v) => html`<option value=${v} selected=${v === rules.roundTo}>${v}</option>`)}</select><//>
+        <${Field} label="Arrondi sur"><select value=${rules.roundOn} onChange=${(e) => setRules(Object.assign({}, rules, { roundOn: e.target.value }))}>
+          ${[['pts', 'les points'], ['base', 'la base'], ['total', 'le total']].map(([v, t]) => html`<option value=${v} selected=${v === rules.roundOn}>${t}</option>`)}</select><//>
+      </div>
+      <h2>Contrats</h2>
+      <table class="rules"><thead><tr><th>Contrat</th><th>Actif</th><th>Base</th><th>Coef.</th></tr></thead><tbody>
+        ${E.CONTRACT_KEYS.map((k) => html`<tr><td>${L[k]}</td>
+          <td><${YesNo} label=${'Actif ' + L[k]} value=${rules.contracts[k].valid} onChange=${(v) => upC(k, Object.assign({}, rules.contracts[k], { valid: v }))} /></td>
+          <td>${numField(rules.contracts[k], 'base', (v) => upC(k, v))}</td><td>${numField(rules.contracts[k], 'coef', (v) => upC(k, v))}</td></tr>`)}
+        <tr><td>${L.goulasch}</td><td><${YesNo} label="Actif Goulasch" value=${rules.contracts.goulasch.valid} onChange=${(v) => upC('goulasch', Object.assign({}, rules.contracts.goulasch, { valid: v }))} /></td>
+          <td colspan="2">${numField(rules.contracts.goulasch, 'amount', (v) => upC('goulasch', v))} fixes</td></tr>
+      </tbody></table>
+      <h2>Annonces</h2>
+      <table class="rules"><thead><tr><th>Annonce</th><th>Actif</th><th>Base</th><th title="Multipliée par le coefficient du contrat">Mult.</th><th title="Partagée entre les deux camps">Part.</th><th title="Chutable : le signe suit le contrat">Chut.</th></tr></thead><tbody>
+        ${E.ANNOUNCEMENT_KEYS.map((k) => html`<tr><td>${L[k]}</td>
+          <td><${YesNo} label=${'Actif ' + L[k]} value=${rules.announcements[k].valid} onChange=${(v) => upA(k, Object.assign({}, rules.announcements[k], { valid: v }))} /></td>
+          <td>${numField(rules.announcements[k], 'base', (v) => upA(k, v))}</td>
+          ${['multiplied', 'shared', 'canFail'].map((f) => html`<td><${YesNo} label=${f + ' ' + L[k]} value=${rules.announcements[k][f]} onChange=${(v) => upA(k, Object.assign({}, rules.announcements[k], { [f]: v }))} /></td>`)}</tr>`)}
+      </tbody></table>
+      <h2>Appliquer</h2>
+      <label class="field"><input type="radio" name="scope" checked=${scope === 'following'} onChange=${() => setScope('following')} /> aux donnes suivantes seulement</label>
+      <label class="field"><input type="radio" name="scope" checked=${scope === 'all'} onChange=${() => setScope('all')} /> à toute la partie (recalcul complet)</label>
+      ${error ? html`<div class="error" role="alert">${error}</div>` : null}
+      <div class="row end"><button class="btn" onClick=${onClose}>Annuler</button><button class="btn primary" onClick=${submit}>Enregistrer</button></div>
+    <//>`;
+  }
+
+  // ------------------------------ score sheet --------------------------------
+
+  function Sheet({ doc, game, readOnly, onRow }) {
+    const { rows, totals } = E.recomputeGame(doc, clone(game));
+    const ids = game.tableOrder;
+    const cell = (row, id) => {
+      const d = row.deal;
+      if (!d.players.includes(id)) return html`<td class="out"></td>`;
+      const v = row.scores[id] || 0;
+      const dead = d.dead.includes(id);
+      return html`<td class=${dead ? 'dead' : cls(v)}>${dead ? '0' : (d.type === 'passed' ? '' : fmt(v))}<small>${fmt(row.cumulative[id] || 0)}</small></td>`;
+    };
+    return html`<div class="sheet-wrap"><table class="sheet">
+      <thead><tr><th class="label">Donne</th>${ids.map((id) => html`<th class=${game.present.includes(id) ? '' : 'gone'}>${E.playerName(doc, id)}</th>`)}</tr></thead>
+      <tbody>${rows.map((row) => html`<tr class=${(row.ann ? 'ann ' : '') + (row.deal.type === 'passed' ? 'passed ' : '') + (row.balanced ? '' : 'bad ') + (readOnly ? '' : 'tap')}
+          onClick=${() => !readOnly && onRow(row)} data-deal=${row.deal.number}>
+        <td class="label">${row.ann
+          ? html`↳ ${L[row.ann.type]} — ${E.playerName(doc, row.ann.beneficiary)}`
+          : html`<b>${row.number}.</b> ${dealLabel(doc, row.deal)}<small class="muted" style="display:block">Donneur : ${E.playerName(doc, row.deal.dealer)}</small>`}
+          ${row.balanced ? null : html` <span class="neg" title="La somme des scores n’est pas nulle">⚠</span>`}</td>
+        ${ids.map((id) => cell(row, id))}</tr>`)}</tbody>
+      <tfoot><tr><td class="label">Total</td>${ids.map((id) => html`<td class=${cls(totals[id] || 0)}>${fmt(totals[id] || 0)}</td>`)}</tr></tfoot>
+    </table></div>`;
+  }
+
+  // ------------------------------ game screen --------------------------------
+
+  function GameScreen({ doc, game, commit, go }) {
+    const [dialog, setDialog] = useState(null);
+    const readOnly = game.state !== 'in_progress';
+    const close = () => setDialog(null);
+    const withGame = (fn) => (draft) => fn(draft, draft.games.find((g) => g.id === game.id));
+
+    const busy = useRef(false);
+    async function run(mutator) {
+      if (busy.current) return { error: 'Enregistrement en cours…' }; // ignores a double tap
+      busy.current = true;
+      try {
+        const res = await commit(withGame(mutator));
+        if (res.ok) close();
+        return res;
+      } finally { busy.current = false; }
+    }
+
+    const onRow = (row) => setDialog({ kind: 'row', row });
+    function rowDialog(row) {
+      const d = row.deal;
+      const title = row.ann ? `${L[row.ann.type]} — donne ${d.number}` : `Donne ${d.number} — ${dealLabel(doc, d)}`;
+      return html`<${Modal} title=${title} onClose=${close}>
+        <div class="seg" style="flex-direction:column">
+          ${row.ann ? html`
+            <button class="btn" onClick=${() => setDialog({ kind: 'annotation', dealId: d.id, ann: row.ann })}>Modifier l’annonce</button>
+            <button class="btn danger" onClick=${async () => { if (confirm('Supprimer cette annonce ?')) await run((dr, g) => E.deleteAnnouncement(dr, g, d.id, row.ann.id)); }}>Supprimer l’annonce</button>`
+          : html`
+            <button class="btn" onClick=${() => setDialog({ kind: 'deal', deal: d })}>Modifier la donne</button>
+            ${d.type === 'contract' ? html`<button class="btn" onClick=${() => setDialog({ kind: 'annotation', dealId: d.id })}>Ajouter une annonce</button>` : null}
+            <button class="btn" onClick=${() => setDialog({ kind: 'deal', afterDealId: d.id })}>Rajouter une donne après celle-ci</button>
+            <button class="btn danger" onClick=${async () => { if (confirm(`Supprimer la donne ${d.number}${d.announcements.length ? ' et ses annonces' : ''} ?`)) await run((dr, g) => E.deleteDeal(dr, g, d.id)); }}>Supprimer la donne</button>`}
+        </div><//>`;
+    }
+
+    async function submitDeal(dlg, input) {
+      if (dlg.deal) {
+        const old = dlg.deal;
+        const typeChange = (old.type === 'contract') !== (input.type === 'contract');
+        if (typeChange && old.announcements.length && !confirm('Changer le type supprime les annonces de cette donne. Continuer ?')) return { error: 'Modification annulée.' };
+        return run((dr, g) => E.updateDeal(dr, g, old.id, input));
+      }
+      if (dlg.afterDealId !== undefined) return run((dr, g) => E.insertDealAfter(dr, g, dlg.afterDealId, input));
+      return run((dr, g) => E.addDeal(dr, g, input));
+    }
+
+    const lastDealId = game.deals.length ? game.deals[game.deals.length - 1].id : null;
+    const dlg = dialog;
+    return html`<div>
+      <div class="row" style="margin-bottom:10px">
+        <div class="grow"><b>${frDate(game.date)}</b> · ${E.rulesFor(doc, game).name}${readOnly ? ' · archivée' : ''}
+          <div class="muted">Prochain donneur : ${game.present.length ? E.playerName(doc, E.expectedDealer(game)) : '—'}</div></div>
+      </div>
+      ${readOnly ? null : html`<div class="row" style="margin-bottom:10px">
+        <button class="btn primary" onClick=${() => setDialog({ kind: 'deal' })}>+ Donne</button>
+        <button class="btn" onClick=${() => setDialog({ kind: 'annotation' })}>+ Annonce</button>
+        <button class="btn" onClick=${() => setDialog({ kind: 'players' })}>Joueurs</button>
+        <button class="btn" onClick=${() => setDialog({ kind: 'rules' })}>Règles</button>
+      </div>`}
+      ${game.deals.length ? html`<${Sheet} doc=${doc} game=${game} readOnly=${readOnly} onRow=${onRow} />`
+        : html`<div class="card muted">Aucune donne pour l’instant.</div>`}
+      ${readOnly ? null : html`<div class="row end" style="margin-top:14px">
+        <button class="btn danger" onClick=${async () => { if (confirm('Terminer la partie ? Elle passera dans l’historique.')) { await commit(withGame((dr, g) => E.endGame(g))); go('#/'); } }}>Terminer la partie</button>
+      </div>`}
+
+      ${dlg && dlg.kind === 'row' ? rowDialog(dlg.row) : null}
+      ${dlg && dlg.kind === 'deal' ? html`<${DealForm} doc=${doc} game=${game} deal=${dlg.deal} afterDealId=${dlg.afterDealId} onSubmit=${(input) => submitDeal(dlg, input)} onClose=${close} />` : null}
+      ${dlg && dlg.kind === 'annotation' ? html`<${AnnouncementForm} doc=${doc} game=${game} dealId=${dlg.dealId} ann=${dlg.ann}
+        onSubmit=${(dealId, a) => run((dr, g) => (dlg.ann ? E.updateAnnouncement(dr, g, dealId, dlg.ann.id, a) : E.addAnnouncement(dr, g, dealId, a)))} onClose=${close} />` : null}
+      ${dlg && dlg.kind === 'players' ? html`<${PlayersDialog} doc=${doc} game=${game} onClose=${close}
+        onSubmit=${({ present, newName, known, after }) => run((dr, g) => {
+          let toAdd = null;
+          if (newName) toAdd = E.findOrAddPlayer(dr, newName).id; else if (known) toAdd = known;
+          const keep = present.filter((p) => g.tableOrder.includes(p));
+          if (toAdd) E.addPlayerToTable(g, toAdd, after);
+          E.setPresentPlayers(g, toAdd ? Array.from(new Set(keep.concat(toAdd))) : keep);
+        })} />` : null}
+      ${dlg && dlg.kind === 'rules' ? html`<${RulesDialog} doc=${doc} game=${game} onClose=${close}
+        onSubmit=${(rules, scope) => {
+          if (JSON.stringify(Object.assign({}, rules, { id: null })) === JSON.stringify(Object.assign({}, E.rulesFor(doc, game), { id: null }))) return { error: 'Aucune modification.' };
+          return run((dr, g) => E.changeRules(dr, g, rules, scope));
+        }} />` : null}
+    </div>`;
+  }
+
+  // ------------------------------ new game -----------------------------------
+
+  function NewGame({ doc, commit, go }) {
+    const last = doc.games.length ? doc.games[doc.games.length - 1] : null;
+    const rulesChoices = E.presetRules().filter((r) => r.id !== 'custom-2016').map((r) => ({ id: r.id, name: r.name }));
+    if (last && !rulesChoices.some((r) => r.id === last.rulesId)) {
+      const r = doc.rules.find((x) => x.id === last.rulesId);
+      if (r) rulesChoices.unshift({ id: r.id, name: `${r.name} (règles de la dernière partie)` });
+    }
+    const [date, setDate] = useState(today());
+    const [rulesId, setRulesId] = useState(last ? last.rulesId : 'custom');
+    const [selected, setSelected] = useState([]);
+    const [newName, setNewName] = useState('');
+    const [error, setError] = useState('');
+    const [extra, setExtra] = useState([]); // players created in this screen (not saved until the game is)
+    const known = doc.players.concat(extra).slice().sort((a, b) => a.firstName.localeCompare(b.firstName, 'fr'));
+    const nameOf = (id) => (known.find((p) => p.id === id) || {}).firstName;
+    const toggle = (id) => setSelected(selected.includes(id) ? selected.filter((p) => p !== id) : selected.concat(id));
+    const move = (i, d) => { const s = selected.slice(); const j = i + d; if (j < 0 || j >= s.length) return; [s[i], s[j]] = [s[j], s[i]]; setSelected(s); };
+    function addNew() {
+      const name = newName.trim();
+      if (!name) return;
+      const existing = known.find((p) => p.firstName.toLowerCase() === name.toLowerCase());
+      if (existing) { if (!selected.includes(existing.id)) setSelected(selected.concat(existing.id)); }
+      else { const p = { id: E.newId(), firstName: name }; setExtra(extra.concat(p)); setSelected(selected.concat(p.id)); }
+      setNewName('');
+    }
+    async function create() {
+      const inProgress = E.currentGame(doc);
+      if (inProgress && !confirm('La partie en cours sera archivée. Continuer ?')) return;
+      const res = await commit((dr) => {
+        const ids = selected.map((id) => {
+          const p = known.find((x) => x.id === id);
+          if (!dr.players.some((x) => x.id === id)) dr.players.push({ id: p.id, firstName: p.firstName });
+          return id;
+        });
+        return E.createGame(dr, { date, rulesId, playerIds: ids }).id;
+      });
+      if (res.error) setError(res.error); else go('#/game/' + res.result);
+    }
+    return html`<div>
+      <h2>Nouvelle partie</h2>
+      <div class="grid2">
+        <${Field} label="Date"><input type="date" value=${date} onInput=${(e) => setDate(e.target.value)} /><//>
+        <${Field} label="Règles"><select value=${rulesId} onChange=${(e) => setRulesId(e.target.value)}>
+          ${rulesChoices.map((r) => html`<option value=${r.id} selected=${r.id === rulesId}>${r.name}</option>`)}</select><//>
+      </div>
+      <h2>Joueurs (${selected.length}) — dans l’ordre de la table</h2>
+      ${selected.length ? html`<div class="card">${selected.map((id, i) => html`<div class="row" style="padding:3px 0">
+        <b>${i + 1}.</b><span class="grow">${nameOf(id)}</span>
+        <button class="btn small" aria-label="Monter" onClick=${() => move(i, -1)}>↑</button>
+        <button class="btn small" aria-label="Descendre" onClick=${() => move(i, 1)}>↓</button>
+        <button class="btn small" aria-label="Retirer" onClick=${() => toggle(id)}>✕</button></div>`)}</div>` : null}
+      <div class="row">${known.filter((p) => !selected.includes(p.id)).map((p) => html`<button class="chip" aria-pressed="false" onClick=${() => toggle(p.id)}>+ ${p.firstName}</button>`)}</div>
+      <div class="row" style="margin-top:10px">
+        <input type="text" class="grow" placeholder="Nouveau prénom" value=${newName} onInput=${(e) => setNewName(e.target.value)} onKeyDown=${(e) => { if (e.key === 'Enter') addNew(); }} style="width:auto" />
+        <button class="btn" onClick=${addNew}>Ajouter</button>
+      </div>
+      ${error ? html`<div class="error" role="alert">${error}</div>` : null}
+      <div class="row end" style="margin-top:14px">
+        <button class="btn" onClick=${() => go('#/')}>Annuler</button>
+        <button class="btn primary" disabled=${selected.length < E.MIN_PLAYERS || selected.length > E.MAX_PLAYERS} onClick=${create}>Créer la partie</button>
+      </div>
+      ${selected.length < E.MIN_PLAYERS ? html`<p class="muted">Choisissez de 3 à 7 joueurs.</p>` : null}
+    </div>`;
+  }
+
+  // ------------------------------ home ---------------------------------------
+
+  function Home({ doc, commit, go, replaceDoc }) {
+    const current = E.currentGame(doc);
+    const archived = doc.games.filter((g) => g.state !== 'in_progress').slice().reverse().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const names = (g) => g.tableOrder.map((id) => E.playerName(doc, id)).join(', ');
+    const fileRef = useRef(null);
+    const [message, setMessage] = useState('');
+    function exportJson() {
+      download(`tarot-${today()}.json`, JSON.stringify(doc, null, 1));
+    }
+    async function importJson(e) {
+      const file = e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      try {
+        const next = E.migrate(JSON.parse(await file.text()));
+        if (!confirm(`Remplacer toutes les données actuelles par ce fichier (${next.games.length} parties) ?`)) return;
+        const res = await replaceDoc(next);
+        setMessage(res.error ? res.error : 'Données importées.');
+      } catch (err) { setMessage('Import impossible : ' + err.message); }
+    }
+    return html`<div>
+      ${current ? html`<h2>Partie en cours</h2>
+        <div class="card link" onClick=${() => go('#/game/' + current.id)}>
+          <b>${frDate(current.date)}</b> · ${current.deals.length} donne${current.deals.length > 1 ? 's' : ''}
+          <div class="muted">${names(current)}</div></div>` : null}
+      <div class="row"><button class="btn primary" onClick=${() => go('#/new')}>Nouvelle partie</button></div>
+      <h2>Historique</h2>
+      ${archived.length ? archived.map((g) => {
+        const best = E.ranking(doc, clone(g))[0];
+        return html`<div class="card link" onClick=${() => go('#/game/' + g.id)}>
+          <b>${frDate(g.date)}</b> · ${g.deals.length} donne${g.deals.length > 1 ? 's' : ''}
+          ${best ? html` · 🏆 ${E.playerName(doc, best.playerId)} (${fmt(best.total)})` : null}
+          <div class="muted">${names(g)}</div></div>`;
+      }) : html`<div class="muted">Aucune partie archivée.</div>`}
+      <h2>Données</h2>
+      <div class="row">
+        <button class="btn" onClick=${exportJson}>Exporter (JSON)</button>
+        <button class="btn" onClick=${() => fileRef.current.click()}>Importer (JSON)</button>
+        <input ref=${fileRef} type="file" accept="application/json,.json" hidden onChange=${importJson} />
+      </div>
+      <p class="muted">Sauvegardez régulièrement : les données sont stockées dans ce navigateur uniquement.</p>
+      ${message ? html`<div class="info" role="status">${message}</div>` : null}
+    </div>`;
+  }
+
+  // ------------------------------ app ----------------------------------------
+
+  function App() {
+    const [doc, setDoc] = useState(null);
+    const [route, setRoute] = useState(location.hash || '#/');
+    const [fatal, setFatal] = useState('');
+    const docRef = useRef(null);
+
+    useEffect(() => {
+      const onHash = () => setRoute(location.hash || '#/');
+      window.addEventListener('hashchange', onHash);
+      (async () => {
+        try {
+          let stored = await idb.get('doc');
+          stored = stored ? E.migrate(stored) : E.createDocument();
+          docRef.current = stored;
+          setDoc(stored);
+          if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+        } catch (e) { setFatal('Impossible d’ouvrir les données locales : ' + e.message); }
+      })();
+      return () => window.removeEventListener('hashchange', onHash);
+    }, []);
+
+    // Applies a mutation on a copy, saves it, and only then shows it: a failure never leaves a half-updated state.
+    async function commit(mutator) {
+      const next = clone(docRef.current);
+      let result;
+      try { result = mutator(next); } catch (e) { return { error: e.message }; }
+      next.rev = (next.rev || 0) + 1;
+      next.updatedAt = new Date().toISOString();
+      try { await idb.put('doc', next); } catch (e) { return { error: 'Sauvegarde impossible : ' + e.message }; }
+      docRef.current = next;
+      setDoc(next);
+      return { ok: true, result };
+    }
+    async function replaceDoc(next) {
+      const copy = clone(next);
+      copy.rev = (docRef.current.rev || 0) + 1;
+      copy.updatedAt = new Date().toISOString();
+      try { await idb.put('doc', copy); } catch (e) { return { error: 'Sauvegarde impossible : ' + e.message }; }
+      docRef.current = copy;
+      setDoc(copy);
+      return { ok: true };
+    }
+    const go = (hash) => { if (location.hash === hash) setRoute(hash); else location.hash = hash; };
+
+    if (fatal) return html`<main><div class="error">${fatal}</div></main>`;
+    if (!doc) return html`<main class="muted">Chargement…</main>`;
+
+    const m = route.match(/^#\/game\/(.+)$/);
+    let body;
+    let title = 'Tarot';
+    if (m) {
+      const game = doc.games.find((g) => g.id === m[1]);
+      if (game) { body = html`<${GameScreen} key=${game.id} doc=${doc} game=${game} commit=${commit} go=${go} />`; title = 'Partie du ' + frDate(game.date); }
+      else body = html`<div class="error">Partie introuvable.</div>`;
+    } else if (route === '#/new') { body = html`<${NewGame} doc=${doc} commit=${commit} go=${go} />`; title = 'Nouvelle partie'; }
+    else body = html`<${Home} doc=${doc} commit=${commit} go=${go} replaceDoc=${replaceDoc} />`;
+
+    return html`<header class="top">
+        ${route === '#/' || route === '' ? null : html`<button class="btn small" onClick=${() => go('#/')} aria-label="Accueil">←</button>`}
+        <h1>${title}</h1>
+      </header>
+      <main>${body}<div class="footer">Version ${BUILD}</div></main>`;
+  }
+
+  render(html`<${App} />`, document.getElementById('root'));
+}());
+</script>
+<script>window.TAROT_BUILD = '__BUILD__';</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch((err) => console.warn('Service worker registration failed', err));
+  }
+</script>
 </body>
 </html>
