@@ -664,3 +664,456 @@ test('slam inflicted by the defence: each defender receives 200 (unannounced sla
     assert.deepEqual(plain(s), { Ricou: 200, Fred: -200, Willy: -400, Greg: 200, Lolo: 200 }, rulesId);
   }
 });
+
+// ---------------- rules configured at game creation (presets = defaults) ----
+
+test('creating a game with unmodified default values reuses the stored preset', () => {
+  const doc = E.createDocument();
+  const before = doc.rules.length;
+  const game = E.createGame(doc, { date: '2026-10-11', rules: rulesById('fft'), playerIds: five });
+  assert.equal(game.rulesId, 'fft');
+  assert.equal(doc.rules.length, before);
+});
+
+test('creating a game with modified values stores a new rule set and leaves the preset untouched', () => {
+  const doc = E.createDocument();
+  const rules = rulesById('fft');
+  rules.contracts.garde.coef = 3;
+  rules.contracts.pousse = { valid: true, base: 25, coef: 1 };
+  const game = E.createGame(doc, { date: '2026-10-11', rules, playerIds: five });
+  const stored = doc.rules.find((r) => r.id === game.rulesId);
+  assert.notEqual(game.rulesId, 'fft');
+  assert.equal(stored.name, 'FFT (modifié)');
+  assert.equal(doc.rules.find((r) => r.id === 'fft').contracts.garde.coef, 2);
+  const g = E.addDeal(doc, game, input({ dealer: 'Ricou', contract: 'garde', pointDiff: 10 })).deal;
+  assert.equal(g.scores.Willy, (25 + 10) * 3 * 2);
+  assert.ok(E.validContracts(stored).includes('pousse'));
+  // the same configuration chosen again reuses that rule set
+  const again = E.createGame(doc, { date: '2026-10-18', rules: clonePlain(stored), playerIds: five });
+  assert.equal(again.rulesId, stored.id);
+});
+
+test('modified values equal to a preset that is already used by a game get the preset name', () => {
+  const doc = E.createDocument();
+  // an old FFT preset kept by a game (history), then the current FFT values are chosen again
+  doc.rules.find((r) => r.id === 'fft').roundTo = 10;
+  const game = E.createGame(doc, { date: '2026-10-11', rules: rulesById('fft'), playerIds: five });
+  const stored = doc.rules.find((r) => r.id === game.rulesId);
+  assert.equal(stored.name, 'FFT');
+  assert.notEqual(stored.id, 'fft');
+});
+
+test('invalid rules are refused at creation and nothing is stored', () => {
+  const doc = E.createDocument();
+  const before = plain(doc);
+  const bad = rulesById('custom');
+  bad.contracts.garde.coef = NaN;
+  assert.throws(() => E.createGame(doc, { date: '2026-10-11', rules: bad, playerIds: five }));
+  const none = rulesById('custom');
+  for (const k of E.CONTRACT_KEYS) none.contracts[k].valid = false;
+  assert.throws(() => E.createGame(doc, { date: '2026-10-11', rules: none, playerIds: five }), /au moins un contrat/);
+  assert.deepEqual(plain(doc.rules), before.rules);
+  assert.equal(doc.games.length, 0);
+});
+
+test('sameRules ignores identifiers, names and key order', () => {
+  const a = rulesById('custom');
+  const b = plain(a);
+  b.id = 'x'; b.name = 'Autre';
+  b.contracts = Object.fromEntries(Object.entries(b.contracts).reverse());
+  assert.ok(E.sameRules(a, b));
+  b.contracts.petite.base = 26;
+  assert.ok(!E.sameRules(a, b));
+});
+
+function clonePlain(x) { return JSON.parse(JSON.stringify(x)); }
+
+// ------------------------------ review follow-ups --------------------------
+
+test('localDate gives the local calendar day, not the UTC one', () => {
+  // 00:30 local on 11 October: in a timezone ahead of UTC (France) the UTC day is still the 10th
+  assert.equal(E.localDate(new Date(2026, 9, 11, 0, 30)), '2026-10-11');
+  assert.equal(E.localDate(new Date(2026, 9, 11, 23, 45)), '2026-10-11');
+  assert.equal(E.localDate(new Date(2026, 0, 5, 12, 0)), '2026-01-05');
+});
+
+test('dealer gaps use the attendance of each deal: a later departure does not flag earlier deals', () => {
+  const { doc, game } = newGame();
+  E.addDeal(doc, game, input({ dealer: 'Ricou' }));
+  E.addDeal(doc, game, input({ dealer: 'Fred' }));
+  E.addDeal(doc, game, input({ dealer: 'Willy' }));
+  assert.deepEqual(plain(E.dealerGaps(game)), []);
+  E.setPresentPlayers(game, ['Ricou', 'Fred', 'Greg', 'Lolo']); // Willy leaves after dealing
+  assert.deepEqual(plain(E.dealerGaps(game)), [], 'the Fred -> Willy transition must stay valid');
+  assert.equal(E.expectedDealer(game), 'Greg');
+});
+
+test('dealer gaps: a player who arrives later does not flag earlier deals either', () => {
+  const { doc, game } = newGame();
+  E.addDeal(doc, game, input({ dealer: 'Ricou' }));
+  E.addDeal(doc, game, input({ dealer: 'Fred' }));
+  E.addPlayerToTable(game, 'Aude', 'Fred');
+  assert.deepEqual(plain(E.dealerGaps(game)), []);
+  const six = E.presentPlayers(game);
+  E.addDeal(doc, game, input({ dealer: 'Aude', players: six, dead: ['Lolo'] }));
+  assert.deepEqual(plain(E.dealerGaps(game)), []);
+});
+
+test('dealer gaps are still reported when the dealer really is out of order', () => {
+  const { doc, game } = newGame();
+  E.addDeal(doc, game, input({ dealer: 'Ricou' }));
+  const skipped = E.addDeal(doc, game, input({ dealer: 'Willy' })).deal; // Fred was expected
+  E.setPresentPlayers(game, ['Ricou', 'Fred', 'Greg', 'Lolo']);
+  assert.deepEqual(plain(E.dealerGaps(game)), [skipped.id]);
+});
+
+// ------------------------------- statistics --------------------------------
+
+function statsDoc() {
+  const doc = E.createDocument();
+  // game 1 (custom rules, Goulasch enabled), archived
+  const g1 = E.createGame(doc, { date: '2026-01-10', rulesId: 'custom', playerIds: five });
+  const d1 = E.addDeal(doc, g1, input({ dealer: 'Ricou', contract: 'garde', taker: 'Willy', partner: 'Fred', succeeded: true, pointDiff: 17 })).deal;
+  E.addAnnouncement(doc, g1, d1.id, { type: 'misere', beneficiary: 'Ricou' });
+  const d2 = E.addDeal(doc, g1, input({ dealer: 'Fred', contract: 'petite', taker: 'Fred', partner: 'Fred', succeeded: false, pointDiff: 3 })).deal;
+  E.addAnnouncement(doc, g1, d2.id, { type: 'handful', beneficiary: 'Fred' });
+  E.addDeal(doc, g1, input({ dealer: 'Willy', type: 'goulasch', winner: 'Greg', loser: 'Fred' }));
+  E.endGame(g1);
+  // game 2 (FFT, no Goulasch): a passed deal is added between the two deals, then archived
+  const g2 = E.createGame(doc, { date: '2026-02-20', rulesId: 'fft', playerIds: five });
+  E.addDeal(doc, g2, input({ dealer: 'Ricou', contract: 'gardeContre', taker: 'Ricou', partner: 'Lolo', succeeded: true, pointDiff: 10 }));
+  E.addDeal(doc, g2, input({ dealer: 'Willy', contract: 'petite', taker: 'Greg', partner: 'Fred', succeeded: false, pointDiff: 5 }));
+  E.endGame(g2);
+  // game 3 in progress (not counted for wins / last places)
+  const g3 = E.createGame(doc, { date: '2026-03-30', rulesId: 'custom', playerIds: five });
+  E.addDeal(doc, g3, input({ dealer: 'Ricou', contract: 'petite', taker: 'Lolo', partner: 'Greg', succeeded: true, pointDiff: 4 }));
+  return { doc, g1, g2, g3 };
+}
+
+test('stats: counters, rates, self-calls, partners, Goulasch; passed deals never count', () => {
+  const { doc } = statsDoc();
+  const st = E.computeStats(doc, {});
+  assert.equal(st.games, 3);
+  assert.equal(st.deals, 3 + 2 + 1, 'the passed deal of game 2 is not a deal played');
+  assert.equal(st.total.deals, 6);
+  const t = st.total.takes;
+  assert.equal(t.count, 5, 'the Goulasch is not a take');
+  assert.equal(t.succeeded, 3);
+  assert.equal(t.selfCalls, 1);
+  assert.equal(plain(Object.fromEntries(Object.entries(t.byContract).map(([k, v]) => [k, v.count]))).garde, 1);
+  assert.equal(t.byContract.petite.count, 3);
+  assert.equal(t.byContract.petite.succeeded, 1);
+  assert.ok(Math.abs(t.rate - 3 / 5) < 1e-12);
+
+  const fred = st.players.Fred;
+  assert.equal(fred.takes.count, 1);
+  assert.equal(fred.takes.selfCalls, 1);
+  assert.equal(fred.takes.selfCallShare, 1);
+  assert.equal(fred.goulasch.lost, 1);
+  assert.equal(fred.goulasch.balance, -40);
+  assert.equal(st.players.Greg.goulasch.won, 1);
+  assert.equal(st.players.Greg.goulasch.balance, 40);
+  // Fred was called by Willy (garde) and by Greg (petite), and called himself once
+  assert.equal(fred.calledCount, 3);
+  assert.equal(st.players.Willy.partners.Fred, 1);
+  assert.equal(st.players.Greg.partners.Fred, 1);
+  assert.equal(st.players.Lolo.partners.Greg, 1);
+});
+
+test('stats: points, wins and last places (archived games only), averages', () => {
+  const { doc, g1, g2 } = statsDoc();
+  const st = E.computeStats(doc, {});
+  const pts = Object.values(st.players).reduce((a, p) => a + p.points, 0);
+  assert.equal(pts, 0, 'points of all players sum to 0');
+  assert.equal(st.total.points, 0);
+  const r1 = E.ranking(doc, g1);
+  const r2 = E.ranking(doc, g2);
+  assert.equal(st.players[r1[0].playerId].wins >= 1, true);
+  const wins = Object.values(st.players).reduce((a, p) => a + p.wins, 0);
+  const lasts = Object.values(st.players).reduce((a, p) => a + p.lasts, 0);
+  assert.ok(wins >= 2 && wins <= 2 + 4, 'two archived games, ties may share a win');
+  assert.ok(lasts >= 2);
+  assert.ok(r2.length === 5);
+  const willy = st.players.Willy;
+  assert.equal(willy.games, 3);
+  assert.ok(Math.abs(willy.avgPointsPerGame - willy.points / 3) < 1e-12);
+  assert.equal(st.players.Willy.reliable, false, 'fewer than 10 games: averages are flagged as unreliable');
+});
+
+test('stats: announcements per type, per 10 deals and per game', () => {
+  const { doc } = statsDoc();
+  const st = E.computeStats(doc, {});
+  assert.equal(st.total.announcements.count, 2);
+  assert.equal(st.players.Ricou.announcements.byType.misere, 1);
+  assert.equal(st.players.Fred.announcements.byType.handful, 1);
+  assert.equal(st.players.Fred.announcements.shares.handful, 1);
+  const ricou = st.players.Ricou;
+  assert.ok(Math.abs(ricou.announcements.per10Deals - (1 * 10) / ricou.deals) < 1e-12);
+  assert.ok(Math.abs(ricou.announcements.perGame - 1 / ricou.games) < 1e-12);
+});
+
+test('stats: the period filter keeps the games dated within it', () => {
+  const { doc } = statsDoc();
+  assert.equal(E.computeStats(doc, { from: '2026-02-01' }).games, 2);
+  assert.equal(E.computeStats(doc, { to: '2026-01-31' }).games, 1);
+  assert.equal(E.computeStats(doc, { from: '2026-02-01', to: '2026-02-28' }).games, 1);
+  const none = E.computeStats(doc, { from: '2027-01-01' });
+  assert.equal(none.games, 0);
+  assert.equal(none.total.takes.rate, null, 'no division by zero');
+});
+
+test('stats: a player seated but without any deal still counts the game (old workbook behaviour)', () => {
+  const doc = E.createDocument();
+  const g = E.createGame(doc, { date: '2026-01-10', rulesId: 'custom', playerIds: five });
+  E.addDeal(doc, g, input({ dealer: 'Ricou', players: ['Ricou', 'Fred', 'Willy', 'Greg'], taker: 'Willy', partner: null }));
+  const st = E.computeStats(doc, {});
+  assert.equal(st.players.Lolo.games, 1);
+  assert.equal(st.players.Lolo.deals, 0);
+});
+
+// ------------------------------ evolution chart ----------------------------
+
+test('evolution: running totals after each deal, announcements included, passed deals skipped', () => {
+  const { doc, game } = newGame(five, 'fft');
+  const a = E.addDeal(doc, game, input({ dealer: 'Ricou', contract: 'garde', pointDiff: 17 })).deal;
+  E.addAnnouncement(doc, game, a.id, { type: 'petitAuBout', beneficiary: 'Greg' });
+  E.addDeal(doc, game, input({ dealer: 'Willy', contract: 'petite', taker: 'Fred', partner: 'Lolo', succeeded: false, pointDiff: 3 })); // Fred skipped -> 1 passed deal
+  const ev = plain(E.evolution(doc, game));
+  assert.deepEqual(ev.players, five);
+  assert.deepEqual(ev.points.map((p) => p.deal), [0, 1, 3], 'the passed deal (number 2) is skipped');
+  assert.deepEqual(ev.points[0].totals, { Ricou: 0, Fred: 0, Willy: 0, Greg: 0, Lolo: 0 });
+  const afterFirst = ev.points[1].totals;
+  assert.equal(afterFirst.Willy, 168 - 40 * 0 - 40, 'garde 168 for the taker, minus the petit au bout paid by the defence (10 x 2 x 2)');
+  const sum = (o) => Object.values(o).reduce((x, y) => x + y, 0);
+  assert.ok(ev.points.every((p) => sum(p.totals) === 0));
+  assert.equal(ev.points[2].totals.Willy, E.recomputeGame(doc, game).totals.Willy);
+});
+
+test('evolution: an empty game only has the starting point', () => {
+  const { doc, game } = newGame();
+  assert.equal(E.evolution(doc, game).points.length, 1);
+});
+
+// ---------------------------------- exports --------------------------------
+
+test('toCsv: ; separator, decimal comma, quotes doubled, BOM', () => {
+  const csv = E.toCsv(['Joueur', 'Note'], [['A;B', 1.5], ['Dit "oui"', 3], ['x', null]]);
+  assert.equal(csv.charCodeAt(0), 0xfeff);
+  assert.equal(csv.slice(1), 'Joueur;Note\r\n"A;B";1,5\r\n"Dit ""oui""";3\r\nx;\r\n');
+});
+
+test('gameTable: one row per contract / announcement / passed deal, scores and running totals', () => {
+  const { doc, game } = newGame(five, 'old-school');
+  for (const p of five) doc.players.push({ id: p, firstName: p });
+  const a = E.addDeal(doc, game, input({ dealer: 'Ricou', contract: 'garde', pointDiff: 17 })).deal;
+  E.addAnnouncement(doc, game, a.id, { type: 'misere', beneficiary: 'Ricou' });
+  E.addDeal(doc, game, input({ dealer: 'Willy', contract: 'petite', taker: 'Fred', partner: 'Fred', succeeded: false, pointDiff: 3 })); // Fred skipped
+  const t = plain(E.gameTable(doc, game));
+  assert.deepEqual(t.header.slice(0, 8), ['N°', 'Donneur', 'Contrat / Annonce', 'Preneur / Annonceur / Gagnant', 'Appelé / Perdant', 'Mort(s)', 'Réalisé ?', 'Écart']);
+  assert.equal(t.header.length, 8 + 5 + 5);
+  assert.equal(t.rows.length, 4, 'garde, misère, passed deal, petite');
+  assert.deepEqual(t.rows[0].slice(0, 8), [1, 'Ricou', 'Garde', 'Willy', 'Fred', '', 'oui', 17]);
+  assert.deepEqual(t.rows[1].slice(0, 4), [1, '', 'Misère', 'Ricou']);
+  assert.equal(t.rows[2][2], 'Tour passé');
+  assert.deepEqual(t.rows[2].slice(8, 13), [0, 0, 0, 0, 0]);
+  assert.deepEqual(t.rows[3].slice(0, 8), [3, 'Willy', 'Petite', 'Fred', 'Fred', '', 'non', 3]);
+  const sum = (a) => a.reduce((x, y) => x + y, 0);
+  for (const row of t.rows) assert.equal(sum(row.slice(8, 13)), 0, 'every row sums to 0');
+  assert.equal(sum(t.rows[3].slice(13, 18)), 0);
+  assert.equal(t.rows[3][13 + 2], E.recomputeGame(doc, game).totals.Willy);
+});
+
+test('statsTables: ranking, takes, announcements and partners tables', () => {
+  const { doc } = statsDoc();
+  for (const p of five) doc.players.push({ id: p, firstName: p });
+  const tables = plain(E.statsTables(doc, E.computeStats(doc, {})));
+  assert.deepEqual(tables.map((t) => t.name), ['Classement', 'Prises', 'Annonces', 'Partenaires']);
+  const ranking = tables[0];
+  assert.equal(ranking.rows[ranking.rows.length - 1][0], 'Total');
+  assert.equal(ranking.rows[0].length, ranking.header.length);
+  assert.equal(ranking.rows[ranking.rows.length - 1][3], 0, 'total points are 0');
+  const takes = tables[1];
+  const totalPetite = takes.rows.find((r) => r[0] === 'Total' && r[1] === 'Petite');
+  assert.equal(totalPetite[2], 3);
+  assert.ok(tables[3].rows.some((r) => r[0] === 'Fred' && r[1] === 'Fred' && r[2] === 1), 'the self-call');
+});
+
+// -------------------------------- change log -------------------------------
+
+function loggedGame(rulesId = 'custom') {
+  const { doc, game } = newGame(five, rulesId);
+  for (const p of five) doc.players.push({ id: p, firstName: p });
+  return { doc, game };
+}
+const change = (doc, game, action) => {
+  const before = clonePlain(game);
+  action();
+  return plain(E.describeChange(doc, before, game));
+};
+
+test('describeChange: a deal added, modified (before -> after) and deleted', () => {
+  const { doc, game } = loggedGame();
+  let deal;
+  assert.deepEqual(change(doc, game, () => { deal = E.addDeal(doc, game, input({ dealer: 'Ricou', contract: 'garde', pointDiff: 17 })).deal; }),
+    ['Donne 1 ajoutée : Garde — Willy + Fred · réalisé de 17']);
+  assert.deepEqual(change(doc, game, () => E.updateDeal(doc, game, deal.id, input({ dealer: 'Ricou', contract: 'garde', pointDiff: 17, succeeded: false }))),
+    ['Donne 1 modifiée : Garde — Willy + Fred · réalisé de 17 → Garde — Willy + Fred · chuté de 17']);
+  assert.deepEqual(change(doc, game, () => E.deleteDeal(doc, game, deal.id)), ['Donne 1 supprimée : Garde — Willy + Fred · chuté de 17']);
+});
+
+test('describeChange: announcements, Goulasch, passed deals, self-call', () => {
+  const { doc, game } = loggedGame('fft');
+  let d1, ann;
+  assert.deepEqual(change(doc, game, () => { d1 = E.addDeal(doc, game, input({ dealer: 'Ricou', taker: 'Willy', partner: 'Willy', pointDiff: 5 })).deal; }),
+    ['Donne 1 ajoutée : Petite — Willy (s’appelle) · réalisé de 5']);
+  assert.deepEqual(change(doc, game, () => { ann = E.addAnnouncement(doc, game, d1.id, { type: 'handful', beneficiary: 'Willy' }); }),
+    ['Annonce ajoutée à la donne 1 : Poignée — Willy']);
+  assert.deepEqual(change(doc, game, () => E.updateAnnouncement(doc, game, d1.id, ann.id, { type: 'doubleHandful', beneficiary: 'Greg' })),
+    ['Annonce de la donne 1 modifiée : Poignée — Willy → Double poignée — Greg']);
+  assert.deepEqual(change(doc, game, () => E.deleteAnnouncement(doc, game, d1.id, game.deals[0].announcements[0].id)),
+    ['Annonce supprimée de la donne 1 : Double poignée — Greg']);
+  const texts = change(doc, game, () => E.addDeal(doc, game, input({ dealer: 'Willy' })));
+  assert.equal(texts.length, 2, 'a passed deal for Fred plus the deal');
+  assert.match(texts[0], /Tour passé \(donneur Fred\) ajouté/);
+  const g = loggedGame();
+  assert.deepEqual(change(g.doc, g.game, () => E.addDeal(g.doc, g.game, input({ dealer: 'Ricou', type: 'goulasch', winner: 'Greg', loser: 'Fred' }))),
+    ['Donne 1 ajoutée : Goulasch — Greg gagne, Fred perd']);
+});
+
+test('describeChange: rules, players, end of game; renumbering is not a change', () => {
+  const { doc, game } = loggedGame();
+  const a = E.addDeal(doc, game, input({ dealer: 'Ricou' })).deal;
+  E.addDeal(doc, game, input({ dealer: 'Fred' }));
+  assert.deepEqual(change(doc, game, () => E.deleteDeal(doc, game, a.id)).length, 1, 'only the deletion: the next deal is renumbered silently');
+  const edited = E.presetRules().find((r) => r.id === 'custom');
+  edited.contracts.garde.coef = 3;
+  assert.deepEqual(change(doc, game, () => E.changeRules(doc, game, edited, 'following')), ['Règles changées : Personnalisé → Personnalisé (modifié)']);
+  assert.deepEqual(change(doc, game, () => E.setPresentPlayers(game, ['Ricou', 'Fred', 'Greg', 'Lolo'])), ['Willy quitte la table']);
+  assert.deepEqual(change(doc, game, () => { doc.players.push({ id: 'Aude', firstName: 'Aude' }); E.addPlayerToTable(game, 'Aude', 'Fred'); }), ['Aude rejoint la table']);
+  assert.deepEqual(change(doc, game, () => E.endGame(game)), ['Partie terminée']);
+  assert.deepEqual(change(doc, game, () => {}), [], 'nothing changed: nothing to log');
+});
+
+test('migrate gives old documents an empty change log', () => {
+  const doc = clonePlain(E.createDocument());
+  delete doc.log;
+  assert.deepEqual(clonePlain(E.migrate(doc).log), []);
+});
+
+// ------------------------------ game administration ------------------------
+
+test('setGameDate validates the date; the change is logged', () => {
+  const { doc, game } = loggedGame();
+  assert.throws(() => E.setGameDate(game, '11/10/2026'));
+  assert.throws(() => E.setGameDate(game, '2026-13-45'));
+  assert.deepEqual(change(doc, game, () => E.setGameDate(game, '2026-10-12')), ['Date de la partie changée : 2026-10-11 → 2026-10-12']);
+});
+
+test('deleteGame removes the game and its log entries only', () => {
+  const doc = E.createDocument();
+  const g1 = E.createGame(doc, { date: '2026-01-01', rulesId: 'custom', playerIds: five });
+  const g2 = E.createGame(doc, { date: '2026-01-08', rulesId: 'custom', playerIds: five });
+  doc.log.push({ id: 'a', game: g1.id, text: ['x'] }, { id: 'b', game: g2.id, text: ['y'] });
+  E.deleteGame(doc, g1.id);
+  assert.deepEqual(plain(doc.games.map((g) => g.id)), [g2.id]);
+  assert.deepEqual(plain(doc.log.map((e) => e.id)), ['b']);
+  assert.throws(() => E.deleteGame(doc, 'missing'));
+});
+
+// ------------------------------- merge on import ---------------------------
+
+function incomingDoc() {
+  // a document as produced by the workbook import: its own player ids, a game in progress, a log entry
+  const doc = E.createDocument();
+  doc.players.push({ id: 'p-lolo', firstName: 'Lolo' }, { id: 'p-fred', firstName: 'Fred' }, { id: 'p-willy', firstName: 'Willy' },
+    { id: 'p-greg', firstName: 'Greg' }, { id: 'p-ricou', firstName: 'Ricou' });
+  const ids = ['p-lolo', 'p-fred', 'p-willy', 'p-greg', 'p-ricou'];
+  const g = E.createGame(doc, { date: '2020-05-01', rulesId: 'custom', playerIds: ids });
+  g.id = 'g-2020-05-01';
+  E.addDeal(doc, g, { type: 'contract', dealer: 'p-lolo', players: ids, dead: [], contract: 'garde', taker: 'p-willy', partner: 'p-fred', succeeded: true, pointDiff: 17 });
+  const d = g.deals[0];
+  E.addAnnouncement(doc, g, d.id, { type: 'misere', beneficiary: 'p-ricou' });
+  doc.log.push({ id: 'e1', at: '2026-01-01T00:00:00Z', game: g.id, by: null, text: ['x'] });
+  E.endGame(g);
+  const cur = E.createGame(doc, { date: '2026-09-04', rulesId: 'custom', playerIds: ids });
+  cur.id = 'g-current';
+  E.addDeal(doc, cur, { type: 'contract', dealer: 'p-lolo', players: ids, dead: [], contract: 'petite', taker: 'p-greg', partner: 'p-lolo', succeeded: false, pointDiff: 3 });
+  return doc;
+}
+
+function localDoc() {
+  const doc = E.createDocument();
+  const lolo = E.findOrAddPlayer(doc, 'lolo');          // same person, other id and case
+  const aude = E.findOrAddPlayer(doc, 'Aude');
+  const ids = [lolo.id, aude.id, E.findOrAddPlayer(doc, 'Greg').id];
+  const g = E.createGame(doc, { date: '2026-10-01', rulesId: 'fft', playerIds: ids });
+  E.addDeal(doc, g, { type: 'contract', dealer: ids[0], players: ids, dead: [], contract: 'petite', taker: ids[1], partner: null, succeeded: true, pointDiff: 5 });
+  return { doc, game: g, ids };
+}
+
+test('merge: nothing already stored is deleted or changed', () => {
+  const { doc } = localDoc();
+  const before = clonePlain(doc);
+  const report = E.mergeDocument(doc, incomingDoc());
+  assert.equal(report.gamesAdded, 2);
+  assert.equal(report.gamesSkipped, 0);
+  assert.deepEqual(clonePlain(doc.games[0]), before.games[0], 'the local game is untouched');
+  for (const p of before.players) assert.deepEqual(clonePlain(doc.players.find((x) => x.id === p.id)), p);
+  assert.equal(doc.games.length, 3);
+});
+
+test('merge: players are matched by first name and every reference is remapped', () => {
+  const { doc, ids } = localDoc();
+  E.mergeDocument(doc, incomingDoc());
+  assert.equal(doc.players.filter((p) => p.firstName.toLowerCase() === 'lolo').length, 1, 'no duplicate Lolo');
+  const merged = doc.games.find((g) => g.id === 'g-2020-05-01');
+  assert.ok(merged.tableOrder.includes(ids[0]), 'the imported game uses the local Lolo id');
+  assert.ok(!JSON.stringify(merged).includes('p-lolo'), 'no leftover imported id');
+  const known = new Set(doc.players.map((p) => p.id));
+  for (const id of merged.tableOrder) assert.ok(known.has(id));
+  for (const d of merged.deals) {
+    assert.deepEqual(plain(Object.keys(d.scores).sort()), plain(merged.tableOrder.slice().sort()));
+    assert.ok(known.has(d.taker) && known.has(d.partner) && known.has(d.dealer));
+  }
+  assert.equal(E.sumScores(E.recomputeGame(doc, merged).totals), 0);
+  const stats = E.computeStats(doc, {});
+  assert.equal(stats.players[ids[0]].games, 3, 'Lolo: the local game and the two imported ones');
+});
+
+test('merge: importing the same file twice changes nothing the second time', () => {
+  const { doc } = localDoc();
+  const incoming = incomingDoc();
+  E.mergeDocument(doc, incoming);
+  const once = clonePlain(doc);
+  const report = E.mergeDocument(doc, incoming);
+  assert.equal(report.gamesAdded, 0);
+  assert.equal(report.gamesSkipped, 2);
+  assert.deepEqual(clonePlain(doc), once);
+});
+
+test('merge: the incoming game in progress is archived when one is already in progress', () => {
+  const { doc, game } = localDoc();
+  assert.equal(game.state, 'in_progress');
+  const report = E.mergeDocument(doc, incomingDoc());
+  assert.equal(report.archivedInProgress, true);
+  assert.equal(doc.games.filter((g) => g.state === 'in_progress').length, 1);
+  assert.equal(E.currentGame(doc).id, game.id);
+  // without a local game in progress, the incoming one stays in progress
+  const empty = E.createDocument();
+  E.mergeDocument(empty, incomingDoc());
+  assert.equal(E.currentGame(empty).id, 'g-current');
+});
+
+test('merge: rule sets are matched by values, log entries follow their game, ids never collide', () => {
+  const { doc } = localDoc();
+  const incoming = incomingDoc();
+  incoming.rules.find((r) => r.id === 'custom').contracts.garde.coef = 3; // a differently configured rule set under the same id
+  E.mergeDocument(doc, incoming);
+  const merged = doc.games.find((g) => g.id === 'g-2020-05-01');
+  const rules = doc.rules.find((r) => r.id === merged.rulesId);
+  assert.equal(rules.contracts.garde.coef, 3, 'the game keeps its own rules');
+  assert.equal(doc.rules.find((r) => r.id === 'custom').contracts.garde.coef, 2, 'the local rule set is not overwritten');
+  assert.equal(new Set(doc.rules.map((r) => r.id)).size, doc.rules.length);
+  assert.ok(doc.log.some((e) => e.id === 'e1'));
+  assert.throws(() => E.mergeDocument(doc, { nope: true }));
+});

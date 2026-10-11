@@ -48,3 +48,24 @@ test('dark mode follows the system setting (no hard-coded light-only colours)', 
     assert.match(html, new RegExp(`@media \\(prefers-color-scheme: dark\\) \\{ ${escaped} \\{`), `no dark variant for ${selector}`);
   }
 });
+
+test('service worker only deletes its own caches (Cache Storage is shared by the whole origin)', () => {
+  const sw = readFileSync(app('sw.js'), 'utf8');
+  assert.match(sw, /const CACHE_PREFIX = 'tarot-'/);
+  assert.match(sw, /k\.startsWith\(CACHE_PREFIX\)/);
+  assert.match(sw, /const CACHE = CACHE_PREFIX \+ '__BUILD__'/);
+});
+
+test('Google configuration: placeholders in the page, injected by the workflow from the documented secrets', () => {
+  const html = readFileSync(app('index.html'), 'utf8');
+  const workflow = readFileSync(new URL('../.github/workflows/pages.yml', import.meta.url), 'utf8');
+  const docs = readFileSync(new URL('../docs/google-cloud.md', import.meta.url), 'utf8');
+  for (const name of ['GOOGLE_CLIENT_ID', 'GOOGLE_API_KEY', 'GOOGLE_APP_ID']) {
+    assert.ok(html.includes(`'__${name}__'`), `placeholder __${name}__ missing in index.html`);
+    assert.ok(workflow.includes(`${name}: \${{ secrets.${name} }}`), `${name} not read from the secrets in the workflow`);
+    assert.ok(workflow.includes(name), name);
+    assert.ok(docs.includes(`\`${name}\``), `${name} not documented`);
+  }
+  assert.match(workflow, /sed -i "s\|__\$\{name\}__\|\$\{value\}\|g" app\/index\.html/);
+  assert.match(workflow, /\*\[!A-Za-z0-9\._-\]\*\)/, 'values are restricted to a safe character set');
+});

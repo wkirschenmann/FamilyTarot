@@ -4,6 +4,7 @@ Web app (PWA) for scoring tarot games, replacing the "Calcul Scores Tarot" Excel
 
 - Published site: https://wkirschenmann.github.io/FamilyTarot/
 - Implementation plan: [docs/PLAN.md](docs/PLAN.md)
+- Google Drive sync setup: [docs/google-cloud.md](docs/google-cloud.md)
 
 The repository (code, docs, commits, PRs) is in English; the app's user interface is in French.
 
@@ -27,6 +28,18 @@ python3 -m http.server -d app   # serve the app locally at http://localhost:8000
 ```
 
 No game data (workbook, JSON exports) must ever be committed: the repository is public.
+
+## Importing the old workbook
+
+One-off, local only (the workbook and the output hold game data and must never be committed):
+
+```sh
+cd tools/import && npm install
+node import-xlsm.js "Calcul Scores Tarot.xlsm"     # writes data/tarot.json and data/import-report.txt
+node verify-stats.js "Calcul Scores Tarot.xlsm"    # compares the statistics with the workbook's STATISTIQUES sheet
+```
+
+Then use "Importer (JSON)" on the app's home screen: it adds the file's content to the data already on the device and never deletes or changes anything (games already present are left as they are, players are matched by first name).
 
 ## License
 
