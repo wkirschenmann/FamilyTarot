@@ -72,6 +72,8 @@ What the workbook analysis confirmed:
 - Evolution chart (`TarotEngine.evolution`, SVG, one colour per seat, legend chips to hide a player) on every game screen.
 - Exports: CSV (`;` separator, decimal comma, UTF-8 with BOM, for a French Excel) and Excel (`xlsx.full.min.js`, SheetJS Apache-2.0, loaded only on demand and kept in the offline cache) of a game (same layout as the old sheet: scores and running totals per player) and of the statistics (CSV: the ranking; Excel: ranking, takes, announcements, partners).
 
+- Undo / redo and change log (spec §9, proposed features): every action on a game is written to `doc.log` (time, game, `by` reserved for the Google identity, one French sentence per change with before → after for modifications, built by `TarotEngine.describeChange`) and can be undone / redone (in memory, last 30 actions, cleared on reload or JSON import; the log itself is kept in the document). "Annuler", "Rétablir" and "Journal" buttons on the game in progress.
+
 ## Repository structure
 
 ```

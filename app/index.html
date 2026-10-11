@@ -119,6 +119,8 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
 .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
 .legend .chip[aria-pressed=true] { background: var(--card); color: var(--fg); }
 .legend .chip[aria-pressed=false] { opacity: .5; }
+
+.log-entry { padding: 8px 10px; margin-bottom: 6px; }
   </style>
 </head>
 <body>
@@ -582,6 +584,62 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
     return { succeeded: diff >= 0, pointDiff: Math.abs(diff) };
   }
 
+  // ------------------------------ change log ---------------------------------
+
+  /** One-line description of a deal, for the change log. */
+  function dealSummary(doc, deal) {
+    const name = (id) => playerName(doc, id);
+    if (deal.type === 'passed') return deal.dealer ? `${LABELS.passed} (donneur ${name(deal.dealer)})` : LABELS.passed;
+    if (deal.type === 'goulasch') return `${LABELS.goulasch} — ${name(deal.winner)} gagne, ${name(deal.loser)} perd`;
+    let who = name(deal.taker);
+    if (deal.players.length >= 5 && deal.partner) who += deal.partner === deal.taker ? ' (s’appelle)' : ` + ${name(deal.partner)}`;
+    return `${LABELS[deal.contract]} — ${who} · ${deal.succeeded ? 'réalisé de' : 'chuté de'} ${deal.pointDiff}`;
+  }
+
+  /**
+   * What an action changed in a game, as French sentences (deals added / removed / modified with before -> after,
+   * announcements, rules, players at the table, end of game). Used for the change log; renumbering is ignored.
+   */
+  function describeChange(doc, before, after) {
+    const name = (id) => playerName(doc, id);
+    const ann = (a) => `${LABELS[a.type]} — ${name(a.beneficiary)}`;
+    const texts = [];
+    const core = (d) => JSON.stringify([d.type, d.dealer, d.players, d.dead, d.contract, d.taker, d.partner, d.succeeded, d.pointDiff, d.winner, d.loser]);
+    const beforeDeals = new Map(before.deals.map((d) => [d.id, d]));
+    const afterIds = new Set(after.deals.map((d) => d.id));
+    for (const d of before.deals) {
+      if (afterIds.has(d.id)) continue;
+      const n = (d.announcements || []).length;
+      texts.push(`Donne ${d.number} supprimée : ${dealSummary(doc, d)}${n ? ` (avec ${n} annonce${n > 1 ? 's' : ''})` : ''}`);
+    }
+    for (const d of after.deals) {
+      const old = beforeDeals.get(d.id);
+      if (!old) { texts.push(d.type === 'passed' ? `${dealSummary(doc, d)} ajouté` : `Donne ${d.number} ajoutée : ${dealSummary(doc, d)}`); continue; }
+      if (core(old) !== core(d)) texts.push(`Donne ${d.number} modifiée : ${dealSummary(doc, old)} → ${dealSummary(doc, d)}`);
+      const olds = new Map((old.announcements || []).map((a) => [a.id, a]));
+      for (const a of d.announcements || []) {
+        const o = olds.get(a.id);
+        if (!o) texts.push(`Annonce ajoutée à la donne ${d.number} : ${ann(a)}`);
+        else if (o.type !== a.type || o.beneficiary !== a.beneficiary) texts.push(`Annonce de la donne ${d.number} modifiée : ${ann(o)} → ${ann(a)}`);
+        olds.delete(a.id);
+      }
+      for (const o of olds.values()) texts.push(`Annonce supprimée de la donne ${d.number} : ${ann(o)}`);
+    }
+    if (before.rulesId !== after.rulesId) {
+      const rn = (id) => (doc.rules.find((r) => r.id === id) || { name: '?' }).name;
+      texts.push(`Règles changées : ${rn(before.rulesId)} → ${rn(after.rulesId)}`);
+    }
+    const joined = after.tableOrder.filter((id) => !before.tableOrder.includes(id));
+    if (joined.length) texts.push(`${joined.map(name).join(', ')} rejoint${joined.length > 1 ? 'nt' : ''} la table`);
+    const left = before.present.filter((id) => !after.present.includes(id));
+    if (left.length) texts.push(`${left.map(name).join(', ')} quitte${left.length > 1 ? 'nt' : ''} la table`);
+    const back = after.present.filter((id) => !before.present.includes(id) && before.tableOrder.includes(id));
+    if (back.length) texts.push(`${back.map(name).join(', ')} revient${back.length > 1 ? 'nent' : ''} à la table`);
+    if (before.state !== 'archived' && after.state === 'archived') texts.push('Partie terminée');
+    if (before.state === 'archived' && after.state !== 'archived') texts.push('Partie rouverte');
+    return texts;
+  }
+
   // -------------------------------- exports ----------------------------------
 
   const yesNo = (v) => (v === true ? 'oui' : v === false ? 'non' : '');
@@ -653,7 +711,7 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
   // ------------------------------ documents ----------------------------------
 
   function createDocument() {
-    return { schemaVersion: SCHEMA_VERSION, rev: 0, updatedAt: null, players: [], rules: presetRules(), games: [] };
+    return { schemaVersion: SCHEMA_VERSION, rev: 0, updatedAt: null, players: [], rules: presetRules(), games: [], log: [] };
   }
 
   /**
@@ -669,6 +727,7 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
     for (const key of ['players', 'rules', 'games']) {
       if (!Array.isArray(doc[key])) throw new Error(`Fichier invalide : "${key}" manquant.`);
     }
+    if (!Array.isArray(doc.log)) doc.log = [];
     const presets = presetRules();
     const used = new Set();
     for (const g of doc.games) { used.add(g.rulesId); for (const d of g.deals) if (d.rulesId) used.add(d.rulesId); }
@@ -1054,7 +1113,7 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
     roundTo, contractValue, contractScores, announcementScores, sumScores, activePlayers, rulesFor,
     recomputeGame, evolution, presentPlayers, nextDealer, expectedDealer, dealerGaps, attackingTeam,
     validateDeal, validateAnnouncement, assistedResult,
-    createDocument, migrate, findOrAddPlayer, playerName, gameTable, statsTables, toCsv,
+    createDocument, migrate, findOrAddPlayer, playerName, dealSummary, describeChange, gameTable, statsTables, toCsv,
     createGame, currentGame, addDeal, insertDealAfter, updateDeal, deleteDeal,
     addAnnouncement, updateAnnouncement, deleteAnnouncement,
     setPresentPlayers, addPlayerToTable, changeRules, endGame, ranking, computeStats,
@@ -1494,6 +1553,19 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
     <//>`;
   }
 
+  // ------------------------------ change log ---------------------------------
+
+  function LogDialog({ doc, game, onClose }) {
+    const entries = (doc.log || []).filter((e) => e.game === game.id).slice().reverse();
+    const when = (iso) => new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return html`<${Modal} title="Journal des modifications" onClose=${onClose}>
+      ${entries.length ? entries.map((e) => html`<div class="card log-entry">
+        <div class="muted">${when(e.at)}${e.by ? ' · ' + e.by : ''}</div>
+        ${e.text.map((t) => html`<div>${t}</div>`)}</div>`)
+        : html`<p class="muted">Aucune modification enregistrée pour cette partie. Les actions faites avant l’arrivée du journal n’y figurent pas.</p>`}
+    <//>`;
+  }
+
   // ------------------------------ score sheet --------------------------------
 
   function Sheet({ doc, game, readOnly, onRow }) {
@@ -1572,7 +1644,7 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
 
   // ------------------------------ game screen --------------------------------
 
-  function GameScreen({ doc, game, commit, go }) {
+  function GameScreen({ doc, game, commit, go, history }) {
     const [dialog, setDialog] = useState(null);
     const readOnly = game.state !== 'in_progress';
     const close = () => setDialog(null);
@@ -1583,7 +1655,7 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
       if (busy.current) return { error: 'Enregistrement en cours…' }; // ignores a double tap
       busy.current = true;
       try {
-        const res = await commit(withGame(mutator));
+        const res = await commit(withGame(mutator), { gameId: game.id });
         if (res.ok) close();
         return res;
       } finally { busy.current = false; }
@@ -1625,6 +1697,11 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
           <div class="muted">Prochain donneur : ${game.present.length && E.expectedDealer(game) ? E.playerName(doc, E.expectedDealer(game)) : '—'}</div></div>
       </div>
       ${readOnly ? null : html`<div class="row" style="margin-bottom:10px">
+        <button class="btn" disabled=${!history.canUndo} onClick=${history.undo} title=${history.canUndo ? 'Annuler : ' + history.lastUndo.texts.join(' ; ') : 'Rien à annuler'}>↶ Annuler</button>
+        <button class="btn" disabled=${!history.canRedo} onClick=${history.redo}>↷ Rétablir</button>
+        <button class="btn" onClick=${() => setDialog({ kind: 'log' })}>Journal</button>
+      </div>
+      <div class="row" style="margin-bottom:10px">
         <button class="btn primary" onClick=${() => setDialog({ kind: 'deal' })}>+ Donne</button>
         <button class="btn" onClick=${() => setDialog({ kind: 'annotation' })}>+ Annonce</button>
         <button class="btn" onClick=${() => setDialog({ kind: 'players' })}>Joueurs</button>
@@ -1638,7 +1715,7 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
         onCsv=${() => { const t = E.gameTable(doc, clone(game)); downloadCsv(`tarot-partie-${game.date}.csv`, t.header, t.rows); }}
         onExcel=${() => { const t = E.gameTable(doc, clone(game)); return downloadExcel(`tarot-partie-${game.date}.xlsx`, [{ name: 'Partie ' + game.date, header: t.header, rows: t.rows }]); }} /></div>` : null}
       ${readOnly ? null : html`<div class="row end" style="margin-top:14px">
-        <button class="btn danger" onClick=${async () => { if (confirm('Terminer la partie ? Elle passera dans l’historique.')) { await commit(withGame((dr, g) => E.endGame(g))); go('#/'); } }}>Terminer la partie</button>
+        <button class="btn danger" onClick=${async () => { if (confirm('Terminer la partie ? Elle passera dans l’historique.')) { await commit(withGame((dr, g) => E.endGame(g)), { gameId: game.id }); go('#/'); } }}>Terminer la partie</button>
       </div>`}
 
       ${dlg && dlg.kind === 'row' ? rowDialog(dlg.row) : null}
@@ -1653,6 +1730,7 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
           if (toAdd) E.addPlayerToTable(g, toAdd, after);
           E.setPresentPlayers(g, toAdd ? Array.from(new Set(keep.concat(toAdd))) : keep);
         })} />` : null}
+      ${dlg && dlg.kind === 'log' ? html`<${LogDialog} doc=${doc} game=${game} onClose=${close} />` : null}
       ${dlg && dlg.kind === 'rules' ? html`<${RulesDialog} doc=${doc} game=${game} onClose=${close}
         onSubmit=${(rules, scope) => {
           if (JSON.stringify(Object.assign({}, rules, { id: null })) === JSON.stringify(Object.assign({}, E.rulesFor(doc, game), { id: null }))) return { error: 'Aucune modification.' };
@@ -1923,19 +2001,67 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
       return () => window.removeEventListener('hashchange', onHash);
     }, []);
 
+    // Undo / redo (in memory, last 30 actions) and the change log (kept in the document).
+    const [undoStack, setUndoStack] = useState([]);
+    const [redoStack, setRedoStack] = useState([]);
+    const MAX_UNDO = 30;
+
     // Applies a mutation on a copy, saves it, and only then shows it: a failure never leaves a half-updated state.
-    async function commit(mutator) {
-      const next = clone(docRef.current);
+    // meta.gameId: the action edits that game -> it is written to the change log and can be undone.
+    async function commit(mutator, meta) {
+      const prev = docRef.current;
+      const next = clone(prev);
       let result;
       try { result = mutator(next); } catch (e) { return { error: e.message }; }
+      let entry = null;
+      if (meta && meta.gameId) {
+        const before = prev.games.find((g) => g.id === meta.gameId);
+        const after = next.games.find((g) => g.id === meta.gameId);
+        if (before && after) {
+          const texts = E.describeChange(next, before, after);
+          if (texts.length) {
+            next.log.push({ id: E.newId(), at: new Date().toISOString(), game: meta.gameId, by: null, text: texts });
+            entry = { gameId: meta.gameId, before: clone(before), after: clone(after), texts };
+          }
+        }
+      }
       next.rev = (next.rev || 0) + 1;
       next.updatedAt = new Date().toISOString();
       try { await idb.put('doc', next); } catch (e) { return { error: 'Sauvegarde impossible : ' + e.message }; }
       docRef.current = next;
       setDoc(next);
+      if (entry) { setUndoStack((st) => st.concat(entry).slice(-MAX_UNDO)); setRedoStack([]); }
       return { ok: true, result };
     }
+    // Puts a game back to a recorded state (undo: `before`, redo: `after`) and logs it.
+    async function restore(entry, which) {
+      const next = clone(docRef.current);
+      const i = next.games.findIndex((g) => g.id === entry.gameId);
+      if (i < 0) return { error: 'Partie introuvable.' };
+      next.games[i] = clone(which === 'undo' ? entry.before : entry.after);
+      const text = (which === 'undo' ? 'Annulation : ' : 'Rétablissement : ') + entry.texts.join(' ; ');
+      next.log.push({ id: E.newId(), at: new Date().toISOString(), game: entry.gameId, by: null, text: [text] });
+      next.rev = (next.rev || 0) + 1;
+      next.updatedAt = new Date().toISOString();
+      try { await idb.put('doc', next); } catch (e) { return { error: 'Sauvegarde impossible : ' + e.message }; }
+      docRef.current = next;
+      setDoc(next);
+      return { ok: true };
+    }
+    async function undo() {
+      const entry = undoStack[undoStack.length - 1];
+      if (!entry) return;
+      const res = await restore(entry, 'undo');
+      if (res.ok) { setUndoStack(undoStack.slice(0, -1)); setRedoStack(redoStack.concat(entry)); }
+    }
+    async function redo() {
+      const entry = redoStack[redoStack.length - 1];
+      if (!entry) return;
+      const res = await restore(entry, 'redo');
+      if (res.ok) { setRedoStack(redoStack.slice(0, -1)); setUndoStack(undoStack.concat(entry).slice(-MAX_UNDO)); }
+    }
     async function replaceDoc(next) {
+      setUndoStack([]); setRedoStack([]);
       const copy = clone(next);
       copy.rev = (docRef.current.rev || 0) + 1;
       copy.updatedAt = new Date().toISOString();
@@ -1954,7 +2080,8 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
     let title = 'Tarot';
     if (m) {
       const game = doc.games.find((g) => g.id === m[1]);
-      if (game) { body = html`<${GameScreen} key=${game.id} doc=${doc} game=${game} commit=${commit} go=${go} />`; title = 'Partie du ' + frDate(game.date); }
+      if (game) { body = html`<${GameScreen} key=${game.id} doc=${doc} game=${game} commit=${commit} go=${go}
+        history=${{ canUndo: undoStack.some((e) => e.gameId === game.id) && undoStack[undoStack.length - 1].gameId === game.id, canRedo: redoStack.length > 0 && redoStack[redoStack.length - 1].gameId === game.id, undo, redo, lastUndo: undoStack.length ? undoStack[undoStack.length - 1] : null }} />`; title = 'Partie du ' + frDate(game.date); }
       else body = html`<div class="error">Partie introuvable.</div>`;
     } else if (route === '#/new') { body = html`<${NewGame} doc=${doc} commit=${commit} go=${go} />`; title = 'Nouvelle partie'; }
     else if (route === '#/stats') { body = html`<${StatsScreen} doc=${doc} />`; title = 'Statistiques'; }

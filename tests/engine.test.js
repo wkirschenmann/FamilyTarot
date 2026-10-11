@@ -937,3 +937,65 @@ test('statsTables: ranking, takes, announcements and partners tables', () => {
   assert.equal(totalPetite[2], 3);
   assert.ok(tables[3].rows.some((r) => r[0] === 'Fred' && r[1] === 'Fred' && r[2] === 1), 'the self-call');
 });
+
+// -------------------------------- change log -------------------------------
+
+function loggedGame(rulesId = 'custom') {
+  const { doc, game } = newGame(five, rulesId);
+  for (const p of five) doc.players.push({ id: p, firstName: p });
+  return { doc, game };
+}
+const change = (doc, game, action) => {
+  const before = clonePlain(game);
+  action();
+  return plain(E.describeChange(doc, before, game));
+};
+
+test('describeChange: a deal added, modified (before -> after) and deleted', () => {
+  const { doc, game } = loggedGame();
+  let deal;
+  assert.deepEqual(change(doc, game, () => { deal = E.addDeal(doc, game, input({ dealer: 'Ricou', contract: 'garde', pointDiff: 17 })).deal; }),
+    ['Donne 1 ajoutée : Garde — Willy + Fred · réalisé de 17']);
+  assert.deepEqual(change(doc, game, () => E.updateDeal(doc, game, deal.id, input({ dealer: 'Ricou', contract: 'garde', pointDiff: 17, succeeded: false }))),
+    ['Donne 1 modifiée : Garde — Willy + Fred · réalisé de 17 → Garde — Willy + Fred · chuté de 17']);
+  assert.deepEqual(change(doc, game, () => E.deleteDeal(doc, game, deal.id)), ['Donne 1 supprimée : Garde — Willy + Fred · chuté de 17']);
+});
+
+test('describeChange: announcements, Goulasch, passed deals, self-call', () => {
+  const { doc, game } = loggedGame('fft');
+  let d1, ann;
+  assert.deepEqual(change(doc, game, () => { d1 = E.addDeal(doc, game, input({ dealer: 'Ricou', taker: 'Willy', partner: 'Willy', pointDiff: 5 })).deal; }),
+    ['Donne 1 ajoutée : Petite — Willy (s’appelle) · réalisé de 5']);
+  assert.deepEqual(change(doc, game, () => { ann = E.addAnnouncement(doc, game, d1.id, { type: 'handful', beneficiary: 'Willy' }); }),
+    ['Annonce ajoutée à la donne 1 : Poignée — Willy']);
+  assert.deepEqual(change(doc, game, () => E.updateAnnouncement(doc, game, d1.id, ann.id, { type: 'doubleHandful', beneficiary: 'Greg' })),
+    ['Annonce de la donne 1 modifiée : Poignée — Willy → Double poignée — Greg']);
+  assert.deepEqual(change(doc, game, () => E.deleteAnnouncement(doc, game, d1.id, game.deals[0].announcements[0].id)),
+    ['Annonce supprimée de la donne 1 : Double poignée — Greg']);
+  const texts = change(doc, game, () => E.addDeal(doc, game, input({ dealer: 'Willy' })));
+  assert.equal(texts.length, 2, 'a passed deal for Fred plus the deal');
+  assert.match(texts[0], /Tour passé \(donneur Fred\) ajouté/);
+  const g = loggedGame();
+  assert.deepEqual(change(g.doc, g.game, () => E.addDeal(g.doc, g.game, input({ dealer: 'Ricou', type: 'goulasch', winner: 'Greg', loser: 'Fred' }))),
+    ['Donne 1 ajoutée : Goulasch — Greg gagne, Fred perd']);
+});
+
+test('describeChange: rules, players, end of game; renumbering is not a change', () => {
+  const { doc, game } = loggedGame();
+  const a = E.addDeal(doc, game, input({ dealer: 'Ricou' })).deal;
+  E.addDeal(doc, game, input({ dealer: 'Fred' }));
+  assert.deepEqual(change(doc, game, () => E.deleteDeal(doc, game, a.id)).length, 1, 'only the deletion: the next deal is renumbered silently');
+  const edited = E.presetRules().find((r) => r.id === 'custom');
+  edited.contracts.garde.coef = 3;
+  assert.deepEqual(change(doc, game, () => E.changeRules(doc, game, edited, 'following')), ['Règles changées : Personnalisé → Personnalisé (modifié)']);
+  assert.deepEqual(change(doc, game, () => E.setPresentPlayers(game, ['Ricou', 'Fred', 'Greg', 'Lolo'])), ['Willy quitte la table']);
+  assert.deepEqual(change(doc, game, () => { doc.players.push({ id: 'Aude', firstName: 'Aude' }); E.addPlayerToTable(game, 'Aude', 'Fred'); }), ['Aude rejoint la table']);
+  assert.deepEqual(change(doc, game, () => E.endGame(game)), ['Partie terminée']);
+  assert.deepEqual(change(doc, game, () => {}), [], 'nothing changed: nothing to log');
+});
+
+test('migrate gives old documents an empty change log', () => {
+  const doc = clonePlain(E.createDocument());
+  delete doc.log;
+  assert.deepEqual(clonePlain(E.migrate(doc).log), []);
+});
