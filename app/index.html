@@ -121,6 +121,9 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
 .legend .chip[aria-pressed=false] { opacity: .5; }
 
 .log-entry { padding: 8px 10px; margin-bottom: 6px; }
+
+.ranking { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 4px; font-size: .9rem; }
+.rank { white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -635,6 +638,7 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
     if (left.length) texts.push(`${left.map(name).join(', ')} quitte${left.length > 1 ? 'nt' : ''} la table`);
     const back = after.present.filter((id) => !before.present.includes(id) && before.tableOrder.includes(id));
     if (back.length) texts.push(`${back.map(name).join(', ')} revient${back.length > 1 ? 'nent' : ''} à la table`);
+    if (before.date !== after.date) texts.push(`Date de la partie changée : ${before.date} → ${after.date}`);
     if (before.state !== 'archived' && after.state === 'archived') texts.push('Partie terminée');
     if (before.state === 'archived' && after.state !== 'archived') texts.push('Partie rouverte');
     return texts;
@@ -979,6 +983,20 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
 
   function endGame(game) { game.state = 'archived'; }
 
+  /** Changes the date of a game (the old workbook's sheet name is only the creation date, so it must be correctable). */
+  function setGameDate(game, date) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) throw new Error('Date invalide.');
+    game.date = date;
+  }
+
+  /** Removes a game for good, with its change log entries. */
+  function deleteGame(doc, gameId) {
+    const i = doc.games.findIndex((g) => g.id === gameId);
+    if (i < 0) throw new Error('Partie introuvable.');
+    doc.games.splice(i, 1);
+    if (Array.isArray(doc.log)) doc.log = doc.log.filter((e) => e.game !== gameId);
+  }
+
   /** Final ranking of a game: [{ playerId, total }] best first. */
   function ranking(doc, game) {
     const { totals } = recomputeGame(doc, game);
@@ -1116,7 +1134,7 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
     createDocument, migrate, findOrAddPlayer, playerName, dealSummary, describeChange, gameTable, statsTables, toCsv,
     createGame, currentGame, addDeal, insertDealAfter, updateDeal, deleteDeal,
     addAnnouncement, updateAnnouncement, deleteAnnouncement,
-    setPresentPlayers, addPlayerToTable, changeRules, endGame, ranking, computeStats,
+    setPresentPlayers, addPlayerToTable, changeRules, endGame, setGameDate, deleteGame, ranking, computeStats,
   };
 }(globalThis));
 </script>
@@ -1553,6 +1571,20 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
     <//>`;
   }
 
+  function DateDialog({ game, onSubmit, onClose }) {
+    const [date, setDate] = useState(game.date || '');
+    const [error, setError] = useState('');
+    async function submit() {
+      const res = await onSubmit(date);
+      if (res && res.error) setError(res.error);
+    }
+    return html`<${Modal} title="Date de la partie" onClose=${onClose}>
+      <${Field} label="Date"><input type="date" value=${date} onInput=${(e) => setDate(e.target.value)} /><//>
+      ${error ? html`<div class="error" role="alert">${error}</div>` : null}
+      <div class="row end"><button class="btn" onClick=${onClose}>Annuler</button><button class="btn primary" onClick=${submit}>Enregistrer</button></div>
+    <//>`;
+  }
+
   // ------------------------------ change log ---------------------------------
 
   function LogDialog({ doc, game, onClose }) {
@@ -1714,6 +1746,10 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
       ${game.deals.length ? html`<div style="margin-top:12px"><${ExportButtons}
         onCsv=${() => { const t = E.gameTable(doc, clone(game)); downloadCsv(`tarot-partie-${game.date}.csv`, t.header, t.rows); }}
         onExcel=${() => { const t = E.gameTable(doc, clone(game)); return downloadExcel(`tarot-partie-${game.date}.xlsx`, [{ name: 'Partie ' + game.date, header: t.header, rows: t.rows }]); }} /></div>` : null}
+      <div class="row end" style="margin-top:14px">
+        <button class="btn small" onClick=${() => setDialog({ kind: 'date' })}>Modifier la date</button>
+        <button class="btn small danger" onClick=${async () => { if (confirm('Supprimer définitivement cette partie et son journal ?')) { const res = await commit((dr) => E.deleteGame(dr, game.id)); if (res.ok) go('#/'); } }}>Supprimer la partie</button>
+      </div>
       ${readOnly ? null : html`<div class="row end" style="margin-top:14px">
         <button class="btn danger" onClick=${async () => { if (confirm('Terminer la partie ? Elle passera dans l’historique.')) { await commit(withGame((dr, g) => E.endGame(g)), { gameId: game.id }); go('#/'); } }}>Terminer la partie</button>
       </div>`}
@@ -1730,6 +1766,7 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
           if (toAdd) E.addPlayerToTable(g, toAdd, after);
           E.setPresentPlayers(g, toAdd ? Array.from(new Set(keep.concat(toAdd))) : keep);
         })} />` : null}
+      ${dlg && dlg.kind === 'date' ? html`<${DateDialog} game=${game} onClose=${close} onSubmit=${(date) => run((dr, g) => E.setGameDate(g, date))} />` : null}
       ${dlg && dlg.kind === 'log' ? html`<${LogDialog} doc=${doc} game=${game} onClose=${close} />` : null}
       ${dlg && dlg.kind === 'rules' ? html`<${RulesDialog} doc=${doc} game=${game} onClose=${close}
         onSubmit=${(rules, scope) => {
@@ -1961,11 +1998,11 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
         <button class="btn" onClick=${() => go('#/stats')}>Statistiques</button></div>
       <h2>Historique</h2>
       ${archived.length ? archived.map((g) => {
-        const best = E.ranking(doc, clone(g))[0];
+        const ranking = g.deals.length ? E.ranking(doc, clone(g)) : [];
         return html`<div class="card link" onClick=${() => go('#/game/' + g.id)}>
           <b>${frDate(g.date)}</b> · ${g.deals.length} donne${g.deals.length > 1 ? 's' : ''}
-          ${best ? html` · 🏆 ${E.playerName(doc, best.playerId)} (${fmt(best.total)})` : null}
-          <div class="muted">${names(g)}</div></div>`;
+          ${ranking.length ? html`<div class="ranking">${ranking.map((r, i) => html`<span class="rank"><span class="muted">${i + 1}.</span> ${i === 0 ? '🏆 ' : ''}${E.playerName(doc, r.playerId)} <b class=${cls(r.total)}>${fmt(r.total)}</b></span>`)}</div>`
+            : html`<div class="muted">${names(g)}</div>`}</div>`;
       }) : html`<div class="muted">Aucune partie archivée.</div>`}
       <h2>Données</h2>
       <div class="row">

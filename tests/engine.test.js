@@ -999,3 +999,23 @@ test('migrate gives old documents an empty change log', () => {
   delete doc.log;
   assert.deepEqual(clonePlain(E.migrate(doc).log), []);
 });
+
+// ------------------------------ game administration ------------------------
+
+test('setGameDate validates the date; the change is logged', () => {
+  const { doc, game } = loggedGame();
+  assert.throws(() => E.setGameDate(game, '11/10/2026'));
+  assert.throws(() => E.setGameDate(game, '2026-13-45'));
+  assert.deepEqual(change(doc, game, () => E.setGameDate(game, '2026-10-12')), ['Date de la partie changée : 2026-10-11 → 2026-10-12']);
+});
+
+test('deleteGame removes the game and its log entries only', () => {
+  const doc = E.createDocument();
+  const g1 = E.createGame(doc, { date: '2026-01-01', rulesId: 'custom', playerIds: five });
+  const g2 = E.createGame(doc, { date: '2026-01-08', rulesId: 'custom', playerIds: five });
+  doc.log.push({ id: 'a', game: g1.id, text: ['x'] }, { id: 'b', game: g2.id, text: ['y'] });
+  E.deleteGame(doc, g1.id);
+  assert.deepEqual(plain(doc.games.map((g) => g.id)), [g2.id]);
+  assert.deepEqual(plain(doc.log.map((e) => e.id)), ['b']);
+  assert.throws(() => E.deleteGame(doc, 'missing'));
+});
