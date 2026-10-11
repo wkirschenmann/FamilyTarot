@@ -727,3 +727,42 @@ test('sameRules ignores identifiers, names and key order', () => {
 });
 
 function clonePlain(x) { return JSON.parse(JSON.stringify(x)); }
+
+// ------------------------------ review follow-ups --------------------------
+
+test('localDate gives the local calendar day, not the UTC one', () => {
+  // 00:30 local on 11 October: in a timezone ahead of UTC (France) the UTC day is still the 10th
+  assert.equal(E.localDate(new Date(2026, 9, 11, 0, 30)), '2026-10-11');
+  assert.equal(E.localDate(new Date(2026, 9, 11, 23, 45)), '2026-10-11');
+  assert.equal(E.localDate(new Date(2026, 0, 5, 12, 0)), '2026-01-05');
+});
+
+test('dealer gaps use the attendance of each deal: a later departure does not flag earlier deals', () => {
+  const { doc, game } = newGame();
+  E.addDeal(doc, game, input({ dealer: 'Ricou' }));
+  E.addDeal(doc, game, input({ dealer: 'Fred' }));
+  E.addDeal(doc, game, input({ dealer: 'Willy' }));
+  assert.deepEqual(plain(E.dealerGaps(game)), []);
+  E.setPresentPlayers(game, ['Ricou', 'Fred', 'Greg', 'Lolo']); // Willy leaves after dealing
+  assert.deepEqual(plain(E.dealerGaps(game)), [], 'the Fred -> Willy transition must stay valid');
+  assert.equal(E.expectedDealer(game), 'Greg');
+});
+
+test('dealer gaps: a player who arrives later does not flag earlier deals either', () => {
+  const { doc, game } = newGame();
+  E.addDeal(doc, game, input({ dealer: 'Ricou' }));
+  E.addDeal(doc, game, input({ dealer: 'Fred' }));
+  E.addPlayerToTable(game, 'Aude', 'Fred');
+  assert.deepEqual(plain(E.dealerGaps(game)), []);
+  const six = E.presentPlayers(game);
+  E.addDeal(doc, game, input({ dealer: 'Aude', players: six, dead: ['Lolo'] }));
+  assert.deepEqual(plain(E.dealerGaps(game)), []);
+});
+
+test('dealer gaps are still reported when the dealer really is out of order', () => {
+  const { doc, game } = newGame();
+  E.addDeal(doc, game, input({ dealer: 'Ricou' }));
+  const skipped = E.addDeal(doc, game, input({ dealer: 'Willy' })).deal; // Fred was expected
+  E.setPresentPlayers(game, ['Ricou', 'Fred', 'Greg', 'Lolo']);
+  assert.deepEqual(plain(E.dealerGaps(game)), [skipped.id]);
+});

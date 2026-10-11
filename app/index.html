@@ -285,6 +285,12 @@ details.rules-card[open] > summary { margin-bottom: 8px; }
   }
   function goulaschEnabled(rules) { return !!rules.contracts.goulasch.valid; }
 
+  /** Local calendar day as YYYY-MM-DD (toISOString would give the UTC day, wrong around midnight outside UTC). */
+  function localDate(date) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  }
+
   // ------------------------------ arithmetic ---------------------------------
 
   /** Round to the nearest multiple of v, halves going up (same as the workbook: Int(x / v + 1/2) * v). */
@@ -663,15 +669,28 @@ details.rules-card[open] > summary { margin-bottom: 8px; }
     return { deal, passes, dealerWarning };
   }
 
+  /** Next dealer after `dealerId` in the table order, among `allowed` players only. */
+  function nextDealerAmong(order, dealerId, allowed) {
+    const start = order.indexOf(dealerId);
+    for (let i = 1; i <= order.length; i += 1) {
+      const candidate = order[(start + i) % order.length];
+      if (allowed.includes(candidate)) return candidate;
+    }
+    return dealerId;
+  }
+
   /**
-   * Ids of the deals whose dealer is not the one expected after the previous deal (table order, present players).
+   * Ids of the deals whose dealer is not the one expected after the previous deal. The expected dealer is
+   * derived from the players of the deal itself (who was at the table then), not from the current attendance,
+   * so a later departure or arrival never changes the verdict on earlier deals.
    * With the Goulasch enabled this means a deal is missing or a player forgot to deal.
    */
   function dealerGaps(game) {
     const gaps = [];
     for (let i = 1; i < game.deals.length; i += 1) {
-      if (game.deals[i].type === 'passed') continue;
-      if (game.deals[i].dealer !== nextDealer(game, game.deals[i - 1].dealer)) gaps.push(game.deals[i].id);
+      const deal = game.deals[i];
+      if (deal.type === 'passed') continue;
+      if (deal.dealer !== nextDealerAmong(game.tableOrder, game.deals[i - 1].dealer, deal.players)) gaps.push(deal.id);
     }
     return gaps;
   }
@@ -795,7 +814,7 @@ details.rules-card[open] > summary { margin-bottom: 8px; }
 
   root.TarotEngine = {
     SCHEMA_VERSION, MIN_PLAYERS, MAX_PLAYERS, MAX_POINT_DIFF, CONTRACT_KEYS, ANNOUNCEMENT_KEYS, LABELS, THRESHOLDS,
-    newId, setIdGenerator,
+    newId, setIdGenerator, localDate,
     presetRules, validateRules, sameRules, findOrAddRules, validContracts, validAnnouncements, goulaschEnabled,
     roundTo, contractValue, contractScores, announcementScores, sumScores, activePlayers, rulesFor,
     recomputeGame, presentPlayers, nextDealer, expectedDealer, dealerGaps, attackingTeam,
@@ -858,7 +877,7 @@ details.rules-card[open] > summary { margin-bottom: 8px; }
   const L = E.LABELS;
   const fmt = (n) => (n < 0 ? '−' + Math.abs(n) : String(n));
   const cls = (n) => (n > 0 ? 'pos' : n < 0 ? 'neg' : '');
-  const today = () => new Date().toISOString().slice(0, 10);
+  const today = () => E.localDate(new Date());
   const frDate = (iso) => (iso || '').split('-').reverse().join('/');
   const clone = (x) => JSON.parse(JSON.stringify(x));
 

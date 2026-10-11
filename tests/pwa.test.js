@@ -48,3 +48,10 @@ test('dark mode follows the system setting (no hard-coded light-only colours)', 
     assert.match(html, new RegExp(`@media \\(prefers-color-scheme: dark\\) \\{ ${escaped} \\{`), `no dark variant for ${selector}`);
   }
 });
+
+test('service worker only deletes its own caches (Cache Storage is shared by the whole origin)', () => {
+  const sw = readFileSync(app('sw.js'), 'utf8');
+  assert.match(sw, /const CACHE_PREFIX = 'tarot-'/);
+  assert.match(sw, /k\.startsWith\(CACHE_PREFIX\)/);
+  assert.match(sw, /const CACHE = CACHE_PREFIX \+ '__BUILD__'/);
+});

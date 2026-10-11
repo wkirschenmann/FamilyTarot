@@ -1,7 +1,8 @@
 // Service worker: makes the app usable offline.
 // Strategy: network first (always fresh when online), cached copy as fallback.
 // __BUILD__ is replaced at deployment, so every release gets its own cache.
-const CACHE = 'tarot-__BUILD__';
+const CACHE_PREFIX = 'tarot-';
+const CACHE = CACHE_PREFIX + '__BUILD__';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -11,7 +12,8 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      // Cache Storage is shared by every app of the origin (other GitHub Pages projects): only touch our own caches.
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith(CACHE_PREFIX) && k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
