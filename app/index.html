@@ -2035,11 +2035,12 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
 
   // ------------------------------ home ---------------------------------------
 
-  function Home({ doc, commit, go }) {
+  function Home({ doc, commit, go, replaceAll, safety, revertReplace }) {
     const current = E.currentGame(doc);
     const archived = doc.games.filter((g) => g.state !== 'in_progress').slice().reverse().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     const names = (g) => g.tableOrder.map((id) => E.playerName(doc, id)).join(', ');
     const fileRef = useRef(null);
+    const restoreRef = useRef(null);
     const [message, setMessage] = useState('');
     function exportJson() {
       download(`tarot-${today()}.json`, JSON.stringify(doc, null, 1));
@@ -2060,6 +2061,29 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
         setMessage(parts.join(', ') + '.' + (report.archivedInProgress ? ' La partie en cours du fichier a été archivée, car une partie est déjà en cours ici.' : ''));
       } catch (err) { setMessage('Import impossible : ' + err.message); }
     }
+    const plural = (n, word) => `${n} ${word}${n > 1 ? 's' : ''}`;
+    async function restoreJson(e) {
+      const file = e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      try {
+        const incoming = E.migrate(JSON.parse(await file.text()));
+        if (!confirm(`RESTAURER cette sauvegarde ?\n\nToutes les données de cet appareil (${plural(doc.games.length, 'partie')}) seront REMPLACÉES par celles du fichier (${plural(incoming.games.length, 'partie')}).\n\nUne copie des données actuelles est gardée : vous pourrez revenir en arrière.`)) return;
+        const res = await replaceAll(incoming, 'Restauration');
+        setMessage(res.error ? res.error : `Sauvegarde restaurée : ${plural(incoming.games.length, 'partie')}.`);
+      } catch (err) { setMessage('Restauration impossible : ' + err.message); }
+    }
+    async function resetAll() {
+      if (!confirm(`TOUT RÉINITIALISER ?\n\nLes ${plural(doc.games.length, 'partie')} et les ${plural(doc.players.length, 'joueur')} de cet appareil seront supprimés. Seuls les jeux de règles par défaut resteront.\n\nPensez à exporter d’abord. Une copie des données actuelles est gardée : vous pourrez revenir en arrière tant que vous ne faites pas une autre restauration ou réinitialisation.`)) return;
+      const res = await replaceAll(E.createDocument(), 'Réinitialisation');
+      setMessage(res.error ? res.error : 'Données réinitialisées.');
+    }
+    async function revert() {
+      if (!confirm('Revenir à l’état d’avant ? Les données actuelles deviendront à leur tour la copie de sécurité.')) return;
+      const res = await revertReplace();
+      setMessage(res.error ? res.error : 'État d’avant rétabli.');
+    }
+    const when = (iso) => new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
     return html`<div>
       ${current ? html`<h2>Partie en cours</h2>
         <div class="card link" onClick=${() => go('#/game/' + current.id)}>
@@ -2082,6 +2106,15 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
         <input ref=${fileRef} type="file" accept="application/json,.json" hidden onChange=${importJson} />
       </div>
       <p class="muted">Sauvegardez régulièrement : les données sont stockées dans ce navigateur uniquement. L’import ajoute le contenu du fichier aux données actuelles, sans rien supprimer.</p>
+      <h2>Zone sensible</h2>
+      <div class="row">
+        <button class="btn" onClick=${() => restoreRef.current.click()}>Restaurer une sauvegarde…</button>
+        <button class="btn danger" onClick=${resetAll}>Tout réinitialiser</button>
+        <input ref=${restoreRef} type="file" accept="application/json,.json" hidden onChange=${restoreJson} />
+      </div>
+      <p class="muted">Restaurer remplace toutes les données par celles d’un fichier exporté. Réinitialiser les efface. Dans les deux cas, l’état d’avant est gardé une fois.</p>
+      ${safety ? html`<div class="card"><div class="muted">${safety.reason} du ${when(safety.at)} : ${plural(safety.doc.games.length, 'partie')} gardée${safety.doc.games.length > 1 ? 's' : ''} en copie de sécurité.</div>
+        <div class="row" style="margin-top:6px"><button class="btn small" onClick=${revert}>Revenir à l’état d’avant</button></div></div>` : null}
       ${message ? html`<div class="info" role="status">${message}</div>` : null}
     </div>`;
   }
@@ -2092,6 +2125,8 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
     const [doc, setDoc] = useState(null);
     const [route, setRoute] = useState(location.hash || '#/');
     const [fatal, setFatal] = useState('');
+    // Copy of the data as they were before the last restore / reset, so that a mistake can be taken back.
+    const [safety, setSafety] = useState(null);
     const docRef = useRef(null);
 
     useEffect(() => {
@@ -2103,6 +2138,7 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
           stored = stored ? E.migrate(stored) : E.createDocument();
           docRef.current = stored;
           setDoc(stored);
+          try { setSafety((await idb.get('safety')) || null); } catch (e) { /* no safety copy */ }
           if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
         } catch (e) { setFatal('Impossible d’ouvrir les données locales : ' + e.message); }
       })();
@@ -2168,6 +2204,26 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
       const res = await restore(entry, 'redo');
       if (res.ok) { setRedoStack(redoStack.slice(0, -1)); setUndoStack(undoStack.concat(entry).slice(-MAX_UNDO)); }
     }
+    // Replaces ALL the data (restore from a backup file, or reset). The previous data are kept as a safety copy.
+    async function replaceAll(next, reason) {
+      const prev = docRef.current;
+      const now = new Date().toISOString();
+      const copy = clone(next);
+      copy.rev = (prev.rev || 0) + 1;
+      copy.updatedAt = now;
+      const kept = { at: now, reason, doc: prev };
+      try { await idb.put('safety', kept); await idb.put('doc', copy); } catch (e) { return { error: 'Sauvegarde impossible : ' + e.message }; }
+      docRef.current = copy;
+      setDoc(copy);
+      setSafety(kept);
+      setUndoStack([]); setRedoStack([]);
+      return { ok: true };
+    }
+    // Takes the last restore / reset back (the data replaced in between become the new safety copy).
+    async function revertReplace() {
+      if (!safety) return { error: 'Aucune copie à rétablir.' };
+      return replaceAll(safety.doc, 'Retour à l’état d’avant ' + safety.reason.toLowerCase());
+    }
     const go = (hash) => { if (location.hash === hash) setRoute(hash); else location.hash = hash; };
 
     if (fatal) return html`<main><div class="error">${fatal}</div></main>`;
@@ -2183,7 +2239,7 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
       else body = html`<div class="error">Partie introuvable.</div>`;
     } else if (route === '#/new') { body = html`<${NewGame} doc=${doc} commit=${commit} go=${go} />`; title = 'Nouvelle partie'; }
     else if (route === '#/stats') { body = html`<${StatsScreen} doc=${doc} />`; title = 'Statistiques'; }
-    else body = html`<${Home} doc=${doc} commit=${commit} go=${go} />`;
+    else body = html`<${Home} doc=${doc} commit=${commit} go=${go} replaceAll=${replaceAll} safety=${safety} revertReplace=${revertReplace} />`;
 
     return html`<header class="top">
         ${route === '#/' || route === '' ? null : html`<button class="btn small" onClick=${() => go('#/')} aria-label="Accueil">←</button>`}
