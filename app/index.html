@@ -84,6 +84,7 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
 </head>
 <body>
 <div id="root"></div>
+<script>window.TAROT_BUILD = '__BUILD__';</script>
 <script id="engine">
 (function (root) {
   'use strict';
@@ -1339,7 +1340,6 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
   render(html`<${App} />`, document.getElementById('root'));
 }());
 </script>
-<script>window.TAROT_BUILD = '__BUILD__';</script>
 <script>
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch((err) => console.warn('Service worker registration failed', err));
