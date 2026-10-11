@@ -766,3 +766,107 @@ test('dealer gaps are still reported when the dealer really is out of order', ()
   E.setPresentPlayers(game, ['Ricou', 'Fred', 'Greg', 'Lolo']);
   assert.deepEqual(plain(E.dealerGaps(game)), [skipped.id]);
 });
+
+// ------------------------------- statistics --------------------------------
+
+function statsDoc() {
+  const doc = E.createDocument();
+  // game 1 (custom rules, Goulasch enabled), archived
+  const g1 = E.createGame(doc, { date: '2026-01-10', rulesId: 'custom', playerIds: five });
+  const d1 = E.addDeal(doc, g1, input({ dealer: 'Ricou', contract: 'garde', taker: 'Willy', partner: 'Fred', succeeded: true, pointDiff: 17 })).deal;
+  E.addAnnouncement(doc, g1, d1.id, { type: 'misere', beneficiary: 'Ricou' });
+  const d2 = E.addDeal(doc, g1, input({ dealer: 'Fred', contract: 'petite', taker: 'Fred', partner: 'Fred', succeeded: false, pointDiff: 3 })).deal;
+  E.addAnnouncement(doc, g1, d2.id, { type: 'handful', beneficiary: 'Fred' });
+  E.addDeal(doc, g1, input({ dealer: 'Willy', type: 'goulasch', winner: 'Greg', loser: 'Fred' }));
+  E.endGame(g1);
+  // game 2 (FFT, no Goulasch): a passed deal is added between the two deals, then archived
+  const g2 = E.createGame(doc, { date: '2026-02-20', rulesId: 'fft', playerIds: five });
+  E.addDeal(doc, g2, input({ dealer: 'Ricou', contract: 'gardeContre', taker: 'Ricou', partner: 'Lolo', succeeded: true, pointDiff: 10 }));
+  E.addDeal(doc, g2, input({ dealer: 'Willy', contract: 'petite', taker: 'Greg', partner: 'Fred', succeeded: false, pointDiff: 5 }));
+  E.endGame(g2);
+  // game 3 in progress (not counted for wins / last places)
+  const g3 = E.createGame(doc, { date: '2026-03-30', rulesId: 'custom', playerIds: five });
+  E.addDeal(doc, g3, input({ dealer: 'Ricou', contract: 'petite', taker: 'Lolo', partner: 'Greg', succeeded: true, pointDiff: 4 }));
+  return { doc, g1, g2, g3 };
+}
+
+test('stats: counters, rates, self-calls, partners, Goulasch; passed deals never count', () => {
+  const { doc } = statsDoc();
+  const st = E.computeStats(doc, {});
+  assert.equal(st.games, 3);
+  assert.equal(st.deals, 3 + 2 + 1, 'the passed deal of game 2 is not a deal played');
+  assert.equal(st.total.deals, 6);
+  const t = st.total.takes;
+  assert.equal(t.count, 5, 'the Goulasch is not a take');
+  assert.equal(t.succeeded, 3);
+  assert.equal(t.selfCalls, 1);
+  assert.equal(plain(Object.fromEntries(Object.entries(t.byContract).map(([k, v]) => [k, v.count]))).garde, 1);
+  assert.equal(t.byContract.petite.count, 3);
+  assert.equal(t.byContract.petite.succeeded, 1);
+  assert.ok(Math.abs(t.rate - 3 / 5) < 1e-12);
+
+  const fred = st.players.Fred;
+  assert.equal(fred.takes.count, 1);
+  assert.equal(fred.takes.selfCalls, 1);
+  assert.equal(fred.takes.selfCallShare, 1);
+  assert.equal(fred.goulasch.lost, 1);
+  assert.equal(fred.goulasch.balance, -40);
+  assert.equal(st.players.Greg.goulasch.won, 1);
+  assert.equal(st.players.Greg.goulasch.balance, 40);
+  // Fred was called by Willy (garde) and by Greg (petite), and called himself once
+  assert.equal(fred.calledCount, 3);
+  assert.equal(st.players.Willy.partners.Fred, 1);
+  assert.equal(st.players.Greg.partners.Fred, 1);
+  assert.equal(st.players.Lolo.partners.Greg, 1);
+});
+
+test('stats: points, wins and last places (archived games only), averages', () => {
+  const { doc, g1, g2 } = statsDoc();
+  const st = E.computeStats(doc, {});
+  const pts = Object.values(st.players).reduce((a, p) => a + p.points, 0);
+  assert.equal(pts, 0, 'points of all players sum to 0');
+  assert.equal(st.total.points, 0);
+  const r1 = E.ranking(doc, g1);
+  const r2 = E.ranking(doc, g2);
+  assert.equal(st.players[r1[0].playerId].wins >= 1, true);
+  const wins = Object.values(st.players).reduce((a, p) => a + p.wins, 0);
+  const lasts = Object.values(st.players).reduce((a, p) => a + p.lasts, 0);
+  assert.ok(wins >= 2 && wins <= 2 + 4, 'two archived games, ties may share a win');
+  assert.ok(lasts >= 2);
+  assert.ok(r2.length === 5);
+  const willy = st.players.Willy;
+  assert.equal(willy.games, 3);
+  assert.ok(Math.abs(willy.avgPointsPerGame - willy.points / 3) < 1e-12);
+  assert.equal(st.players.Willy.reliable, false, 'fewer than 10 games: averages are flagged as unreliable');
+});
+
+test('stats: announcements per type, per 10 deals and per game', () => {
+  const { doc } = statsDoc();
+  const st = E.computeStats(doc, {});
+  assert.equal(st.total.announcements.count, 2);
+  assert.equal(st.players.Ricou.announcements.byType.misere, 1);
+  assert.equal(st.players.Fred.announcements.byType.handful, 1);
+  assert.equal(st.players.Fred.announcements.shares.handful, 1);
+  const ricou = st.players.Ricou;
+  assert.ok(Math.abs(ricou.announcements.per10Deals - (1 * 10) / ricou.deals) < 1e-12);
+  assert.ok(Math.abs(ricou.announcements.perGame - 1 / ricou.games) < 1e-12);
+});
+
+test('stats: the period filter keeps the games dated within it', () => {
+  const { doc } = statsDoc();
+  assert.equal(E.computeStats(doc, { from: '2026-02-01' }).games, 2);
+  assert.equal(E.computeStats(doc, { to: '2026-01-31' }).games, 1);
+  assert.equal(E.computeStats(doc, { from: '2026-02-01', to: '2026-02-28' }).games, 1);
+  const none = E.computeStats(doc, { from: '2027-01-01' });
+  assert.equal(none.games, 0);
+  assert.equal(none.total.takes.rate, null, 'no division by zero');
+});
+
+test('stats: a player seated but without any deal still counts the game (old workbook behaviour)', () => {
+  const doc = E.createDocument();
+  const g = E.createGame(doc, { date: '2026-01-10', rulesId: 'custom', playerIds: five });
+  E.addDeal(doc, g, input({ dealer: 'Ricou', players: ['Ricou', 'Fred', 'Willy', 'Greg'], taker: 'Willy', partner: null }));
+  const st = E.computeStats(doc, {});
+  assert.equal(st.players.Lolo.games, 1);
+  assert.equal(st.players.Lolo.deals, 0);
+});

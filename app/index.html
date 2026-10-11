@@ -91,6 +91,23 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
 
 details.card > summary { color: var(--fg); cursor: pointer; padding: 4px 0; }
 details.rules-card[open] > summary { margin-bottom: 8px; }
+
+table.stat { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+table.stat td, table.stat th { padding: 5px 6px; text-align: left; }
+table.stat td:last-child { text-align: right; }
+table.stat.wide td, table.stat.wide th { text-align: right; }
+table.stat.wide td:first-child, table.stat.wide th:first-child { text-align: left; }
+table.stat tr.sum td { font-weight: 700; border-top: 1px solid var(--line); }
+table.stat thead th { font-size: .8rem; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--line); }
+.chip.static { cursor: default; }
+.stats-table td.label { min-width: 110px; }
+.stats-table tfoot td { font-weight: 700; }
+
+table.stat td, table.stat th { white-space: nowrap; }
+table.stat td:first-child { white-space: normal; }
+table.stat.wide td, table.stat.wide th { padding: 5px 4px; font-size: .86rem; }
+.stats-table th, .stats-table td { padding: 6px 5px; font-size: .88rem; }
+.stats-table td.label, .stats-table th.label { min-width: 92px; max-width: 120px; }
   </style>
 </head>
 <body>
@@ -444,6 +461,7 @@ details.rules-card[open] > summary { margin-bottom: 8px; }
 
   /** Next dealer after `dealerId`, following the table order among present players. */
   function nextDealer(game, dealerId) {
+    if (!dealerId) return null; // unknown dealer
     const order = game.tableOrder;
     const start = order.indexOf(dealerId);
     for (let i = 1; i <= order.length; i += 1) {
@@ -456,7 +474,8 @@ details.rules-card[open] > summary { margin-bottom: 8px; }
   /** Dealer expected for the next deal appended to the game. */
   function expectedDealer(game) {
     if (!game.deals.length) return presentPlayers(game)[0];
-    return nextDealer(game, game.deals[game.deals.length - 1].dealer);
+    const last = game.deals[game.deals.length - 1].dealer;
+    return last ? nextDealer(game, last) : null; // null: unknown (deals imported from the old workbook have no dealer)
   }
 
   // ---------------------------- validation -----------------------------------
@@ -467,7 +486,8 @@ details.rules-card[open] > summary { margin-bottom: 8px; }
     const n = deal.players.length;
     if (n < MIN_PLAYERS || n > MAX_PLAYERS) errors.push('Une donne se joue de 3 à 7 joueurs.');
     if (new Set(deal.players).size !== n) errors.push('Un joueur est présent plusieurs fois.');
-    if (!deal.players.includes(deal.dealer)) errors.push('Le donneur doit faire partie des joueurs de la donne.');
+    if (!deal.dealer) errors.push('Choisissez le donneur.');
+    else if (!deal.players.includes(deal.dealer)) errors.push('Le donneur doit faire partie des joueurs de la donne.');
     if (deal.type === 'passed') return errors;
     const expectedDead = Math.max(0, n - 5);
     if (deal.dead.length !== expectedDead) {
@@ -649,11 +669,12 @@ details.rules-card[open] > summary { margin-bottom: 8px; }
     const deal = checkedDeal(rules, buildDeal(game, input, game.rulesId));
     const passes = [];
     let dealerWarning = false;
-    if (game.deals.length && deal.dealer !== expectedDealer(game)) {
+    const expected = game.deals.length ? expectedDealer(game) : null;
+    if (expected && deal.dealer !== expected) {
       if (goulaschEnabled(rules)) {
         dealerWarning = true;
       } else {
-        let d = expectedDealer(game);
+        let d = expected;
         for (let guard = 0; d !== deal.dealer && guard < game.tableOrder.length; guard += 1) {
           passes.push({
             id: newId(), number: 0, dealer: d, type: 'passed', rulesId: game.rulesId,
@@ -689,7 +710,7 @@ details.rules-card[open] > summary { margin-bottom: 8px; }
     const gaps = [];
     for (let i = 1; i < game.deals.length; i += 1) {
       const deal = game.deals[i];
-      if (deal.type === 'passed') continue;
+      if (deal.type === 'passed' || !deal.dealer || !game.deals[i - 1].dealer) continue; // unknown dealer: nothing to check
       if (deal.dealer !== nextDealerAmong(game.tableOrder, game.deals[i - 1].dealer, deal.players)) gaps.push(deal.id);
     }
     return gaps;
@@ -812,6 +833,127 @@ details.rules-card[open] > summary { margin-bottom: 8px; }
     return Object.keys(totals).map((playerId) => ({ playerId, total: totals[playerId] })).sort((a, b) => b.total - a.total);
   }
 
+  // ------------------------------ statistics ---------------------------------
+
+  const ratio = (a, b) => (b ? a / b : null);
+
+  function blankPlayerStats() {
+    return {
+      games: 0, deals: 0, points: 0, wins: 0, lasts: 0,
+      takes: { count: 0, succeeded: 0, diffSum: 0, selfCalls: 0, byContract: {} },
+      announcements: { count: 0, byType: {} },
+      partners: {}, // partner id -> number of times this player (as taker) called them (self-call included)
+      goulasch: { won: 0, lost: 0, balance: 0 },
+    };
+  }
+
+  /**
+   * Statistics over the games dated within [from, to] (YYYY-MM-DD, both optional). Passed deals never count;
+   * the Goulasch counts as a deal played by every player of the deal but is kept out of the takes. Wins and last
+   * places are only counted on archived games (the result of a game in progress is not final).
+   * Returns { period, games, deals, players: { id: stats }, total: stats }; every stats object holds counters
+   * and derived values (shares, rates, averages; null when undefined).
+   */
+  function computeStats(doc, { from = null, to = null } = {}) {
+    const games = doc.games.filter((g) => (!from || g.date >= from) && (!to || g.date <= to));
+    const players = {};
+    const total = blankPlayerStats();
+    const of = (id) => players[id] || (players[id] = blankPlayerStats());
+    let totalDeals = 0;
+
+    for (const game of games) {
+      const played = game.deals.filter((d) => d.type !== 'passed');
+      if (!played.length) continue;
+      total.games += 1;
+      const gamePoints = {};
+      for (const deal of played) {
+        totalDeals += 1;
+        total.deals += 1;
+        for (const id of deal.players) { of(id).deals += 1; if (!(id in gamePoints)) gamePoints[id] = 0; }
+        for (const id of game.tableOrder) if (!(id in gamePoints)) gamePoints[id] = 0;
+        for (const id of Object.keys(deal.scores)) gamePoints[id] = (gamePoints[id] || 0) + deal.scores[id];
+        for (const ann of deal.announcements || []) {
+          for (const id of Object.keys(ann.scores)) gamePoints[id] = (gamePoints[id] || 0) + ann.scores[id];
+          const st = of(ann.beneficiary).announcements;
+          st.count += 1;
+          st.byType[ann.type] = (st.byType[ann.type] || 0) + 1;
+          total.announcements.count += 1;
+          total.announcements.byType[ann.type] = (total.announcements.byType[ann.type] || 0) + 1;
+        }
+        if (deal.type === 'goulasch') {
+          const w = of(deal.winner).goulasch;
+          const l = of(deal.loser).goulasch;
+          w.won += 1; w.balance += deal.scores[deal.winner];
+          l.lost += 1; l.balance += deal.scores[deal.loser];
+          total.goulasch.won += 1;
+          continue;
+        }
+        const t = of(deal.taker).takes;
+        const bucket = (takes) => takes.byContract[deal.contract] || (takes.byContract[deal.contract] = { count: 0, succeeded: 0, diffSum: 0 });
+        for (const takes of [t, total.takes]) {
+          takes.count += 1;
+          if (deal.succeeded) takes.succeeded += 1;
+          takes.diffSum += deal.pointDiff;
+          const b = bucket(takes);
+          b.count += 1;
+          if (deal.succeeded) b.succeeded += 1;
+          b.diffSum += deal.pointDiff;
+        }
+        if (deal.partner) {
+          for (const partners of [of(deal.taker).partners, total.partners]) partners[deal.partner] = (partners[deal.partner] || 0) + 1;
+          if (deal.partner === deal.taker) { t.selfCalls += 1; total.takes.selfCalls += 1; }
+        }
+      }
+      // a game counts for everyone seated at its table (like the old workbook), even if they only watched the deals
+      for (const id of game.tableOrder) of(id).games += 1;
+      for (const id of Object.keys(gamePoints)) { of(id).points += gamePoints[id]; total.points += gamePoints[id]; }
+      if (game.state === 'archived') {
+        const values = Object.values(gamePoints);
+        const best = Math.max(...values);
+        const worst = Math.min(...values);
+        if (best !== worst) {
+          for (const id of Object.keys(gamePoints)) {
+            if (gamePoints[id] === best) of(id).wins += 1;
+            if (gamePoints[id] === worst) of(id).lasts += 1;
+          }
+        }
+      }
+    }
+
+    const derive = (st, isTotal) => {
+      st.participation = ratio(st.games, total.games);
+      st.dealShare = isTotal ? null : ratio(st.deals, totalDeals);
+      st.avgDealsPerGame = ratio(st.deals, st.games);
+      st.avgPointsPerGame = ratio(st.points, st.games);
+      st.reliable = st.games >= 10;
+      const tk = st.takes;
+      tk.rate = ratio(tk.succeeded, tk.count);
+      tk.avgDiff = ratio(tk.diffSum, tk.count);
+      tk.selfCallShare = ratio(tk.selfCalls, tk.count);
+      for (const key of Object.keys(tk.byContract)) {
+        const b = tk.byContract[key];
+        b.share = ratio(b.count, tk.count);
+        b.rate = ratio(b.succeeded, b.count);
+        b.avgDiff = ratio(b.diffSum, b.count);
+      }
+      const an = st.announcements;
+      an.per10Deals = st.deals ? (an.count * 10) / st.deals : null;
+      an.perGame = ratio(an.count, st.games);
+      an.shares = {};
+      for (const key of Object.keys(an.byType)) an.shares[key] = ratio(an.byType[key], an.count);
+    };
+    for (const id of Object.keys(players)) derive(players[id], false);
+    derive(total, true);
+    // how many times each player was called as partner (by anyone, themselves included)
+    for (const id of Object.keys(players)) players[id].calledCount = 0;
+    for (const taker of Object.keys(players)) {
+      for (const partner of Object.keys(players[taker].partners)) {
+        if (players[partner]) players[partner].calledCount += players[taker].partners[partner];
+      }
+    }
+    return { period: { from, to }, games: total.games, deals: totalDeals, players, total };
+  }
+
   root.TarotEngine = {
     SCHEMA_VERSION, MIN_PLAYERS, MAX_PLAYERS, MAX_POINT_DIFF, CONTRACT_KEYS, ANNOUNCEMENT_KEYS, LABELS, THRESHOLDS,
     newId, setIdGenerator, localDate,
@@ -822,7 +964,7 @@ details.rules-card[open] > summary { margin-bottom: 8px; }
     createDocument, migrate, findOrAddPlayer, playerName,
     createGame, currentGame, addDeal, insertDealAfter, updateDeal, deleteDeal,
     addAnnouncement, updateAnnouncement, deleteAnnouncement,
-    setPresentPlayers, addPlayerToTable, changeRules, endGame, ranking,
+    setPresentPlayers, addPlayerToTable, changeRules, endGame, ranking, computeStats,
   };
 }(globalThis));
 </script>
@@ -933,7 +1075,7 @@ details.rules-card[open] > summary { margin-bottom: 8px; }
     const goulasch = E.goulaschEnabled(rules) || (editing && deal.type === 'goulasch');
 
     const [dealer, setDealer] = useState(editing ? deal.dealer : (inserting
-      ? (afterDealId ? E.nextDealer(game, game.deals.find((d) => d.id === afterDealId).dealer) : E.presentPlayers(game)[0])
+      ? (afterDealId ? (E.nextDealer(game, game.deals.find((d) => d.id === afterDealId).dealer) || null) : E.presentPlayers(game)[0])
       : E.expectedDealer(game)));
     const [players, setPlayers] = useState(initialPlayers);
     const [kind, setKind] = useState(editing ? (deal.type === 'contract' ? deal.contract : deal.type) : contractOptions[0]);
@@ -958,9 +1100,10 @@ details.rules-card[open] > summary { margin-bottom: 8px; }
     // Who will be skipped (passed deals) when the dealer differs from the expected one.
     const goulaschOn = E.goulaschEnabled(rules);
     let skipped = [];
-    const unexpectedDealer = !editing && !inserting && game.deals.length > 0 && dealer !== E.expectedDealer(game);
-    if (!goulaschOn && !editing && !inserting && game.deals.length) {
-      let d = E.expectedDealer(game);
+    const expectedNow = game.deals.length ? E.expectedDealer(game) : null;
+    const unexpectedDealer = !editing && !inserting && !!expectedNow && dealer !== expectedNow;
+    if (!goulaschOn && !editing && !inserting && expectedNow) {
+      let d = expectedNow;
       for (let i = 0; d !== dealer && i < game.tableOrder.length; i += 1) { skipped.push(d); d = E.nextDealer(game, d); }
     }
 
@@ -1007,7 +1150,7 @@ details.rules-card[open] > summary { margin-bottom: 8px; }
         <${PlayerSelect} doc=${doc} ids=${players} value=${dealer} onChange=${setDealer} />
       <//>
       ${skipped.length ? html`<div class="info">${skipped.length} tour${skipped.length > 1 ? 's' : ''} passé${skipped.length > 1 ? 's' : ''} ajouté${skipped.length > 1 ? 's' : ''} automatiquement (${skipped.map((p) => E.playerName(doc, p)).join(', ')}).</div>` : null}
-      ${goulaschOn && unexpectedDealer ? html`<div class="warn" role="alert">⚠ Ce n’est pas le donneur attendu (${E.playerName(doc, E.expectedDealer(game))}). Avec le Goulasch, personne ne passe son tour : il manque peut-être une donne, ou un joueur a oublié de distribuer. Vous pouvez valider quand même.</div>` : null}
+      ${goulaschOn && unexpectedDealer ? html`<div class="warn" role="alert">⚠ Ce n’est pas le donneur attendu (${E.playerName(doc, expectedNow)}). Avec le Goulasch, personne ne passe son tour : il manque peut-être une donne, ou un joueur a oublié de distribuer. Vous pouvez valider quand même.</div>` : null}
       <${Field} label="Contrat">
         <select value=${kind} onChange=${(e) => setKind(e.target.value)}>
           ${contractOptions.map((k) => html`<option value=${k} selected=${k === kind}>${L[k]}</option>`)}
@@ -1225,7 +1368,7 @@ details.rules-card[open] > summary { margin-bottom: 8px; }
           onClick=${() => !readOnly && onRow(row)} data-deal=${row.deal.number}>
         <td class="label">${row.ann
           ? html`↳ ${L[row.ann.type]} — ${E.playerName(doc, row.ann.beneficiary)}`
-          : html`<b>${row.number}.</b> ${dealLabel(doc, row.deal)}<small class="muted" style="display:block">Donneur : ${E.playerName(doc, row.deal.dealer)}</small>`}
+          : html`<b>${row.number}.</b> ${dealLabel(doc, row.deal)}<small class="muted" style="display:block">Donneur : ${row.deal.dealer ? E.playerName(doc, row.deal.dealer) : 'inconnu'}</small>`}
           ${row.balanced ? null : html` <span class="neg" title="La somme des scores n’est pas nulle">⚠</span>`}
           ${!row.ann && gaps.includes(row.deal.id) ? html` <span class="warn-mark" title="Donneur inattendu : il manque peut-être une donne, ou un joueur a oublié de distribuer.">⚠</span>` : null}</td>
         ${ids.map((id) => cell(row, id))}</tr>`)}</tbody>
@@ -1285,7 +1428,7 @@ details.rules-card[open] > summary { margin-bottom: 8px; }
     return html`<div>
       <div class="row" style="margin-bottom:10px">
         <div class="grow"><b>${frDate(game.date)}</b> · ${E.rulesFor(doc, game).name}${readOnly ? ' · archivée' : ''}
-          <div class="muted">Prochain donneur : ${game.present.length ? E.playerName(doc, E.expectedDealer(game)) : '—'}</div></div>
+          <div class="muted">Prochain donneur : ${game.present.length && E.expectedDealer(game) ? E.playerName(doc, E.expectedDealer(game)) : '—'}</div></div>
       </div>
       ${readOnly ? null : html`<div class="row" style="margin-bottom:10px">
         <button class="btn primary" onClick=${() => setDialog({ kind: 'deal' })}>+ Donne</button>
@@ -1389,6 +1532,124 @@ details.rules-card[open] > summary { margin-bottom: 8px; }
     </div>`;
   }
 
+  // ------------------------------ statistics ---------------------------------
+
+  const nf = (digits) => (x) => (x === null || x === undefined ? '—' : x.toLocaleString('fr-FR', { minimumFractionDigits: digits, maximumFractionDigits: digits }));
+  const n1 = nf(1);
+  const pct = (x) => (x === null || x === undefined ? '—' : (100 * x).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' %');
+  const pts = (x) => (x < 0 ? '\u2212' : '') + Math.abs(x).toLocaleString('fr-FR');
+  const signed = (x) => (x === null || x === undefined ? '—' : (x < 0 ? '−' : '') + n1(Math.abs(x)));
+
+  function StatBlock({ title, children }) {
+    return html`<section class="card"><h2 style="margin-top:0">${title}</h2>${children}</section>`;
+  }
+
+  /** Detail of one player (or of the whole table when id === 'total'). */
+  function PlayerStats({ doc, st, id, onClose }) {
+    const isTotal = id === 'total';
+    const p = isTotal ? st.total : st.players[id];
+    const name = isTotal ? 'Total général' : E.playerName(doc, id);
+    const contracts = E.CONTRACT_KEYS.filter((k) => p.takes.byContract[k]);
+    const announcements = E.ANNOUNCEMENT_KEYS.filter((k) => p.announcements.byType[k]);
+    const partnerIds = Object.keys(p.partners).sort((a, b) => p.partners[b] - p.partners[a]);
+    return html`<${Modal} title=${name} onClose=${onClose}>
+      ${!isTotal && !p.reliable ? html`<div class="warn">⚠ Moins de 10 parties : les moyennes sont peu fiables.</div>` : null}
+      <${StatBlock} title="Parties et donnes">
+        <table class="stat"><tbody>
+          <tr><td>Parties jouées</td><td>${p.games}${isTotal ? '' : html` <span class="muted">(${pct(p.participation)} des parties)</span>`}</td></tr>
+          <tr><td>Donnes jouées</td><td>${p.deals}${isTotal ? '' : html` <span class="muted">(${pct(p.dealShare)} des donnes)</span>`}</td></tr>
+          <tr><td>Donnes par partie</td><td>${n1(p.avgDealsPerGame)}</td></tr>
+        </tbody></table>
+      <//>
+      <${StatBlock} title="Points">
+        <table class="stat"><tbody>
+          <tr><td>Total</td><td class=${cls(p.points)}>${pts(p.points)}</td></tr>
+          <tr><td>Moyenne par partie</td><td class=${cls(p.avgPointsPerGame)}>${signed(p.avgPointsPerGame)}</td></tr>
+          ${isTotal ? null : html`<tr><td>Victoires</td><td>${p.wins}</td></tr><tr><td>Dernières places</td><td>${p.lasts}</td></tr>`}
+        </tbody></table>
+      <//>
+      <${StatBlock} title="Prises">
+        ${contracts.length ? html`<div class="sheet-wrap"><table class="stat wide"><thead><tr><th>Contrat</th><th>Nb</th><th>%</th><th>Réuss.</th><th>Taux</th><th>Écart</th></tr></thead><tbody>
+          ${contracts.map((k) => { const b = p.takes.byContract[k]; return html`<tr><td>${L[k]}</td><td>${b.count}</td><td>${pct(b.share)}</td><td>${b.succeeded}</td><td>${pct(b.rate)}</td><td>${n1(b.avgDiff)}</td></tr>`; })}
+          <tr class="sum"><td>Total</td><td>${p.takes.count}</td><td>${pct(1)}</td><td>${p.takes.succeeded}</td><td>${pct(p.takes.rate)}</td><td>${n1(p.takes.avgDiff)}</td></tr>
+        </tbody></table></div>
+        <p class="muted">% : répartition des prises · Écart : écart de points moyen</p>` : html`<div class="muted">Aucune prise.</div>`}
+      <//>
+      <${StatBlock} title="Annonces">
+        ${announcements.length ? html`<table class="stat wide"><thead><tr><th>Annonce</th><th>Nb</th><th>%</th></tr></thead><tbody>
+          ${announcements.map((k) => html`<tr><td>${L[k]}</td><td>${p.announcements.byType[k]}</td><td>${pct(p.announcements.shares[k])}</td></tr>`)}
+          <tr class="sum"><td>Total</td><td>${p.announcements.count}</td><td>${pct(1)}</td></tr>
+        </tbody></table>
+        <p class="muted">${n1(p.announcements.per10Deals)} pour 10 donnes · ${n1(p.announcements.perGame)} par partie</p>` : html`<div class="muted">Aucune annonce.</div>`}
+      <//>
+      <${StatBlock} title="Partenaires">
+        <table class="stat"><tbody>
+          <tr><td>Auto-appels</td><td>${p.takes.selfCalls}${html` <span class="muted">(${pct(p.takes.selfCallShare)} des prises)</span>`}</td></tr>
+          ${isTotal ? null : html`<tr><td>Appelé par un preneur</td><td>${p.calledCount} fois</td></tr>`}
+        </tbody></table>
+        ${partnerIds.length ? html`<p class="muted" style="margin-bottom:4px">Partenaires appelés${isTotal ? '' : ' par ce joueur'} :</p>
+          <div class="row">${partnerIds.map((pid) => html`<span class="chip static">${E.playerName(doc, pid)} · ${p.partners[pid]}</span>`)}</div>` : null}
+      <//>
+      ${p.goulasch.won || p.goulasch.lost ? html`<${StatBlock} title="Goulasch">
+        <table class="stat"><tbody>
+          <tr><td>Gagnés</td><td>${p.goulasch.won}</td></tr>
+          ${isTotal ? null : html`<tr><td>Perdus</td><td>${p.goulasch.lost}</td></tr><tr><td>Solde</td><td class=${cls(p.goulasch.balance)}>${pts(p.goulasch.balance)}</td></tr>`}
+        </tbody></table>
+      <//>` : null}
+    <//>`;
+  }
+
+  function StatsScreen({ doc }) {
+    const years = Array.from(new Set(doc.games.map((g) => (g.date || '').slice(0, 4)).filter(Boolean))).sort().reverse();
+    const [period, setPeriod] = useState('all');
+    const [from, setFrom] = useState('');
+    const [to, setTo] = useState('');
+    const [sort, setSort] = useState('avg');
+    const [detail, setDetail] = useState(null);
+    let range = {};
+    if (/^\d{4}$/.test(period)) range = { from: period + '-01-01', to: period + '-12-31' };
+    else if (period === 'custom') range = { from: from || null, to: to || null };
+    const st = E.computeStats(doc, range);
+    const keyOf = {
+      avg: (p) => (p.avgPointsPerGame === null ? -Infinity : p.avgPointsPerGame), total: (p) => p.points, wins: (p) => p.wins,
+      games: (p) => p.games, deals: (p) => p.deals,
+    }[sort];
+    const ids = Object.keys(st.players).filter((id) => st.players[id].games > 0)
+      .sort((a, b) => keyOf(st.players[b]) - keyOf(st.players[a]) || E.playerName(doc, a).localeCompare(E.playerName(doc, b), 'fr'));
+    const lowGames = ids.some((id) => !st.players[id].reliable);
+    return html`<div>
+      <div class="grid2">
+        <${Field} label="Période"><select value=${period} onChange=${(e) => setPeriod(e.target.value)}>
+          <option value="all">Toutes les parties</option>
+          ${years.map((y) => html`<option value=${y} selected=${y === period}>${y}</option>`)}
+          <option value="custom">Dates précises…</option></select><//>
+        <${Field} label="Trier par"><select value=${sort} onChange=${(e) => setSort(e.target.value)}>
+          ${[['avg', 'Moyenne par partie'], ['total', 'Total des points'], ['wins', 'Victoires'], ['games', 'Parties jouées'], ['deals', 'Donnes jouées']].map(([v, t]) => html`<option value=${v} selected=${v === sort}>${t}</option>`)}</select><//>
+      </div>
+      ${period === 'custom' ? html`<div class="grid2">
+        <${Field} label="Du"><input type="date" value=${from} onInput=${(e) => setFrom(e.target.value)} /><//>
+        <${Field} label="Au"><input type="date" value=${to} onInput=${(e) => setTo(e.target.value)} /><//>
+      </div>` : null}
+      ${st.games === 0 ? html`<div class="card muted">Aucune partie sur cette période.</div>` : html`
+        <div class="card">
+          <b>${st.games}</b> partie${st.games > 1 ? 's' : ''} · <b>${st.deals}</b> donnes · <b>${st.total.takes.count}</b> prises
+          · réussite <b>${pct(st.total.takes.rate)}</b>
+        </div>
+        <div class="sheet-wrap"><table class="sheet stats-table">
+          <thead><tr><th class="label">Joueur</th><th>Points</th><th>Moy.</th><th>Vict.</th><th>Dern.</th></tr></thead>
+          <tbody>${ids.map((id) => { const p = st.players[id]; return html`<tr class="tap" onClick=${() => setDetail(id)} data-player=${E.playerName(doc, id)}>
+            <td class="label"><b>${E.playerName(doc, id)}</b>${p.reliable ? '' : html` <span class="warn-mark" title="Moins de 10 parties : moyenne peu fiable">⚠</span>`}
+              <small class="muted" style="display:block">${p.games} partie${p.games > 1 ? 's' : ''}</small></td>
+            <td class=${cls(p.points)}>${pts(p.points)}</td><td class=${cls(p.avgPointsPerGame)}>${signed(p.avgPointsPerGame)}</td>
+            <td>${p.wins}</td><td>${p.lasts}</td></tr>`; })}</tbody>
+          <tfoot><tr class="tap" onClick=${() => setDetail('total')}><td class="label">Total général<small class="muted" style="display:block">${st.games} partie${st.games > 1 ? 's' : ''}</small></td><td></td><td></td><td></td><td></td></tr></tfoot>
+        </table></div>
+        ${lowGames ? html`<p class="muted">⚠ Moins de 10 parties : la moyenne par partie est peu fiable.</p>` : null}
+        <p class="muted">Touchez un joueur pour voir le détail (prises, annonces, partenaires). Les tours passés ne comptent pas comme donnes jouées ; le Goulasch compte comme une donne, mais pas comme une prise.</p>`}
+      ${detail && st.games ? html`<${PlayerStats} doc=${doc} st=${st} id=${detail} onClose=${() => setDetail(null)} />` : null}
+    </div>`;
+  }
+
   // ------------------------------ home ---------------------------------------
 
   function Home({ doc, commit, go, replaceDoc }) {
@@ -1416,7 +1677,8 @@ details.rules-card[open] > summary { margin-bottom: 8px; }
         <div class="card link" onClick=${() => go('#/game/' + current.id)}>
           <b>${frDate(current.date)}</b> · ${current.deals.length} donne${current.deals.length > 1 ? 's' : ''}
           <div class="muted">${names(current)}</div></div>` : null}
-      <div class="row"><button class="btn primary" onClick=${() => go('#/new')}>Nouvelle partie</button></div>
+      <div class="row"><button class="btn primary" onClick=${() => go('#/new')}>Nouvelle partie</button>
+        <button class="btn" onClick=${() => go('#/stats')}>Statistiques</button></div>
       <h2>Historique</h2>
       ${archived.length ? archived.map((g) => {
         const best = E.ranking(doc, clone(g))[0];
@@ -1493,6 +1755,7 @@ details.rules-card[open] > summary { margin-bottom: 8px; }
       if (game) { body = html`<${GameScreen} key=${game.id} doc=${doc} game=${game} commit=${commit} go=${go} />`; title = 'Partie du ' + frDate(game.date); }
       else body = html`<div class="error">Partie introuvable.</div>`;
     } else if (route === '#/new') { body = html`<${NewGame} doc=${doc} commit=${commit} go=${go} />`; title = 'Nouvelle partie'; }
+    else if (route === '#/stats') { body = html`<${StatsScreen} doc=${doc} />`; title = 'Statistiques'; }
     else body = html`<${Home} doc=${doc} commit=${commit} go=${go} replaceDoc=${replaceDoc} />`;
 
     return html`<header class="top">

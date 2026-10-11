@@ -1,0 +1,9 @@
+{
+  "name": "familytarot-import",
+  "private": true,
+  "type": "module",
+  "description": "One-off import of the legacy Excel workbook into tarot.json (never published)",
+  "dependencies": {
+    "xlsx": "0.18.5"
+  }
+}

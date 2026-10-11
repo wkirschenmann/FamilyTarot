@@ -29,6 +29,18 @@ python3 -m http.server -d app   # serve the app locally at http://localhost:8000
 
 No game data (workbook, JSON exports) must ever be committed: the repository is public.
 
+## Importing the old workbook
+
+One-off, local only (the workbook and the output hold game data and must never be committed):
+
+```sh
+cd tools/import && npm install
+node import-xlsm.js "Calcul Scores Tarot.xlsm"     # writes data/tarot.json and data/import-report.txt
+node verify-stats.js "Calcul Scores Tarot.xlsm"    # compares the statistics with the workbook's STATISTIQUES sheet
+```
+
+Then use "Importer (JSON)" on the app's home screen.
+
 ## License
 
 Apache 2.0, see [LICENSE](LICENSE).
