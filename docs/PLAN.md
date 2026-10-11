@@ -64,6 +64,8 @@ What the workbook analysis confirmed:
 
 - Dark mode: the interface follows the system / browser setting (`prefers-color-scheme`) with no manual switch: palette variables, `color-scheme` for native controls, highlight colours and the browser theme colour all have dark counterparts.
 
+- Rules are configured when a game is created: the presets (FFT, old school, custom) are only default values to start from. The creation screen has a collapsible rules form (rounding, contracts, announcements, Goulasch amount) with a "start from the defaults of…" selector (the presets and the rules of the last game). The configured values are stored as a rule set: reused when identical to a stored one, otherwise added as a new one (named "<preset> (modifié)"), never edited in place. Invalid values (non-integers, no active contract) are refused.
+
 ## Repository structure
 
 ```

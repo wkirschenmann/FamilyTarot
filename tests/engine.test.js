@@ -664,3 +664,66 @@ test('slam inflicted by the defence: each defender receives 200 (unannounced sla
     assert.deepEqual(plain(s), { Ricou: 200, Fred: -200, Willy: -400, Greg: 200, Lolo: 200 }, rulesId);
   }
 });
+
+// ---------------- rules configured at game creation (presets = defaults) ----
+
+test('creating a game with unmodified default values reuses the stored preset', () => {
+  const doc = E.createDocument();
+  const before = doc.rules.length;
+  const game = E.createGame(doc, { date: '2026-10-11', rules: rulesById('fft'), playerIds: five });
+  assert.equal(game.rulesId, 'fft');
+  assert.equal(doc.rules.length, before);
+});
+
+test('creating a game with modified values stores a new rule set and leaves the preset untouched', () => {
+  const doc = E.createDocument();
+  const rules = rulesById('fft');
+  rules.contracts.garde.coef = 3;
+  rules.contracts.pousse = { valid: true, base: 25, coef: 1 };
+  const game = E.createGame(doc, { date: '2026-10-11', rules, playerIds: five });
+  const stored = doc.rules.find((r) => r.id === game.rulesId);
+  assert.notEqual(game.rulesId, 'fft');
+  assert.equal(stored.name, 'FFT (modifié)');
+  assert.equal(doc.rules.find((r) => r.id === 'fft').contracts.garde.coef, 2);
+  const g = E.addDeal(doc, game, input({ dealer: 'Ricou', contract: 'garde', pointDiff: 10 })).deal;
+  assert.equal(g.scores.Willy, (25 + 10) * 3 * 2);
+  assert.ok(E.validContracts(stored).includes('pousse'));
+  // the same configuration chosen again reuses that rule set
+  const again = E.createGame(doc, { date: '2026-10-18', rules: clonePlain(stored), playerIds: five });
+  assert.equal(again.rulesId, stored.id);
+});
+
+test('modified values equal to a preset that is already used by a game get the preset name', () => {
+  const doc = E.createDocument();
+  // an old FFT preset kept by a game (history), then the current FFT values are chosen again
+  doc.rules.find((r) => r.id === 'fft').roundTo = 10;
+  const game = E.createGame(doc, { date: '2026-10-11', rules: rulesById('fft'), playerIds: five });
+  const stored = doc.rules.find((r) => r.id === game.rulesId);
+  assert.equal(stored.name, 'FFT');
+  assert.notEqual(stored.id, 'fft');
+});
+
+test('invalid rules are refused at creation and nothing is stored', () => {
+  const doc = E.createDocument();
+  const before = plain(doc);
+  const bad = rulesById('custom');
+  bad.contracts.garde.coef = NaN;
+  assert.throws(() => E.createGame(doc, { date: '2026-10-11', rules: bad, playerIds: five }));
+  const none = rulesById('custom');
+  for (const k of E.CONTRACT_KEYS) none.contracts[k].valid = false;
+  assert.throws(() => E.createGame(doc, { date: '2026-10-11', rules: none, playerIds: five }), /au moins un contrat/);
+  assert.deepEqual(plain(doc.rules), before.rules);
+  assert.equal(doc.games.length, 0);
+});
+
+test('sameRules ignores identifiers, names and key order', () => {
+  const a = rulesById('custom');
+  const b = plain(a);
+  b.id = 'x'; b.name = 'Autre';
+  b.contracts = Object.fromEntries(Object.entries(b.contracts).reverse());
+  assert.ok(E.sameRules(a, b));
+  b.contracts.petite.base = 26;
+  assert.ok(!E.sameRules(a, b));
+});
+
+function clonePlain(x) { return JSON.parse(JSON.stringify(x)); }

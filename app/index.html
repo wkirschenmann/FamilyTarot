@@ -88,6 +88,9 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
 .warn { background: #fff1d6; color: #6b4a00; border: 1px solid #f0c36b; border-radius: 8px; padding: 8px 10px; margin: 10px 0; font-size: .92rem; }
 @media (prefers-color-scheme: dark) { .warn { background: #3a2e12; color: #ffd98a; border-color: #6b5420; } }
 .warn-mark { color: var(--warn); cursor: help; }
+
+details.card > summary { color: var(--fg); cursor: pointer; padding: 4px 0; }
+details.rules-card[open] > summary { margin-bottom: 8px; }
   </style>
 </head>
 <body>
@@ -148,7 +151,7 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
     const fft = {
       id: 'fft', name: 'FFT', roundTo: 1, roundOn: 'pts', split: { taker: 2, partner: 1 },
       contracts: {
-        petite: contract(true, 25, 1), pousse: contract(false, 0, 0), garde: contract(true, 25, 2),
+        petite: contract(true, 25, 1), pousse: contract(false, 25, 1), garde: contract(true, 25, 2),
         gardeSans: contract(true, 25, 4), gardeContre: contract(true, 25, 6), goulasch: { valid: false, amount: 40 },
       },
       announcements: {
@@ -213,6 +216,7 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
       || rules.split.taker < 0 || rules.split.partner < 0 || rules.split.taker + rules.split.partner !== 3) {
       errors.push('Le partage preneur/partenaire doit totaliser 3 parts entières (2/1 par défaut).');
     }
+    if (!CONTRACT_KEYS.some((k) => rules.contracts[k].valid)) errors.push('Il faut au moins un contrat actif.');
     for (const key of CONTRACT_KEYS) {
       const c = rules.contracts[key];
       if (!Number.isInteger(c.base) || !Number.isInteger(c.coef) || c.base < 0 || c.coef < 0) {
@@ -228,6 +232,49 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
       }
     }
     return errors;
+  }
+
+  function canonical(x) {
+    if (Array.isArray(x)) return x.map(canonical);
+    if (x && typeof x === 'object') {
+      const out = {};
+      for (const k of Object.keys(x).sort()) out[k] = canonical(x[k]);
+      return out;
+    }
+    return x;
+  }
+
+  /** True when two rule sets have the same values (identifiers and names are ignored). */
+  function sameRules(a, b) {
+    const core = (r) => JSON.stringify(canonical({
+      roundTo: r.roundTo, roundOn: r.roundOn, split: r.split, contracts: r.contracts, announcements: r.announcements,
+    }));
+    return core(a) === core(b);
+  }
+
+  const VARIANT_SUFFIX = ' (modifié)';
+  function variantName(name) {
+    return name.endsWith(VARIANT_SUFFIX) ? name : name + VARIANT_SUFFIX;
+  }
+
+  /**
+   * Returns the stored rule set having exactly these values, adding it when it does not exist yet.
+   * Rule sets are history (games point to them), so a modified set is always a new one, never an edit.
+   * Its name is the preset's when the values are a current preset, else the given name + " (modifié)".
+   */
+  function findOrAddRules(doc, rules) {
+    const errors = validateRules(rules);
+    if (errors.length) throw new Error(errors.join(' '));
+    const existing = doc.rules.find((r) => sameRules(r, rules));
+    if (existing) return existing;
+    const preset = presetRules().find((p) => sameRules(p, rules));
+    const free = (id) => !doc.rules.some((r) => r.id === id);
+    const version = Object.assign(JSON.parse(JSON.stringify(rules)), {
+      id: preset && free(preset.id) ? preset.id : newId(),
+      name: preset ? preset.name : variantName(rules.name || 'Règles'),
+    });
+    doc.rules.push(version);
+    return version;
   }
 
   function validContracts(rules) {
@@ -536,9 +583,10 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
   // -------------------------------- games ------------------------------------
 
   /** Creates a game; the previous in-progress game, if any, is archived. */
-  function createGame(doc, { date, rulesId, playerIds }) {
+  function createGame(doc, { date, rulesId, rules, playerIds }) {
     if (playerIds.length < MIN_PLAYERS || playerIds.length > MAX_PLAYERS) throw new Error('Une partie réunit 3 à 7 joueurs.');
     if (new Set(playerIds).size !== playerIds.length) throw new Error('Un joueur est présent plusieurs fois.');
+    if (rules) rulesId = findOrAddRules(doc, rules).id; // configured at creation: the presets are only default values
     if (!doc.rules.some((r) => r.id === rulesId)) throw new Error('Jeu de règles inconnu.');
     for (const g of doc.games) if (g.state === 'in_progress') g.state = 'archived';
     const game = {
@@ -730,10 +778,7 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
    * modified in place). scope 'following': only deals added from now on use it; 'all': recalculates everything.
    */
   function changeRules(doc, game, newRules, scope) {
-    const errors = validateRules(newRules);
-    if (errors.length) throw new Error(errors.join(' '));
-    const version = Object.assign({}, JSON.parse(JSON.stringify(newRules)), { id: newId() });
-    doc.rules.push(version);
+    const version = findOrAddRules(doc, Object.assign({}, newRules, { name: newRules.name || rulesFor(doc, game).name }));
     if (scope === 'all') for (const d of game.deals) d.rulesId = version.id;
     game.rulesId = version.id;
     recomputeGame(doc, game);
@@ -751,7 +796,7 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
   root.TarotEngine = {
     SCHEMA_VERSION, MIN_PLAYERS, MAX_PLAYERS, MAX_POINT_DIFF, CONTRACT_KEYS, ANNOUNCEMENT_KEYS, LABELS, THRESHOLDS,
     newId, setIdGenerator,
-    presetRules, validateRules, validContracts, validAnnouncements, goulaschEnabled,
+    presetRules, validateRules, sameRules, findOrAddRules, validContracts, validAnnouncements, goulaschEnabled,
     roundTo, contractValue, contractScores, announcementScores, sumScores, activePlayers, rulesFor,
     recomputeGame, presentPlayers, nextDealer, expectedDealer, dealerGaps, attackingTeam,
     validateDeal, validateAnnouncement, assistedResult,
@@ -1076,22 +1121,17 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
   }
   const numField = (obj, key, set) => html`<input type="number" inputmode="numeric" min="0" style="width:5em" value=${obj[key]} onInput=${(e) => set(Object.assign({}, obj, { [key]: e.target.value === '' ? NaN : Number(e.target.value) }))} />`;
 
-  function RulesDialog({ doc, game, onSubmit, onClose }) {
-    const [rules, setRules] = useState(clone(E.rulesFor(doc, game)));
-    const [scope, setScope] = useState('following');
-    const [error, setError] = useState('');
+  // The rule set form, shared by the game creation screen and the in-game dialog.
+  // The presets (FFT, old school, custom) are only default values to start from.
+  function RulesForm({ rules, setRules, defaults, baseKey, onBase }) {
     const upC = (k, v) => setRules(Object.assign({}, rules, { contracts: Object.assign({}, rules.contracts, { [k]: v }) }));
     const upA = (k, v) => setRules(Object.assign({}, rules, { announcements: Object.assign({}, rules.announcements, { [k]: v }) }));
-    const loadPreset = (id) => { if (id) setRules(clone(E.presetRules().find((r) => r.id === id))); };
-    async function submit() {
-      const res = await onSubmit(rules, scope);
-      if (res && res.error) setError(res.error);
-    }
-    return html`<${Modal} title="Règles de la partie" onClose=${onClose}>
-      <${Field} label="Charger un jeu prédéfini">
-        <select onChange=${(e) => loadPreset(e.target.value)}><option value="">—</option>
-          ${E.presetRules().filter((r) => r.id !== 'custom-2016').map((r) => html`<option value=${r.id}>${r.name}</option>`)}</select>
+    return html`<div>
+      <${Field} label="Valeurs par défaut de départ">
+        <select value=${baseKey} onChange=${(e) => onBase(e.target.value)}>
+          ${defaults.map((d) => html`<option value=${d.key} selected=${d.key === baseKey}>${d.name}</option>`)}</select>
       <//>
+      <p class="muted">Choisir un jeu recharge ses valeurs ; chaque valeur reste modifiable ci-dessous.</p>
       <div class="grid2">
         <${Field} label="Arrondi à"><select value=${rules.roundTo} onChange=${(e) => setRules(Object.assign({}, rules, { roundTo: Number(e.target.value) }))}>
           ${[1, 5, 10].map((v) => html`<option value=${v} selected=${v === rules.roundTo}>${v}</option>`)}</select><//>
@@ -1113,6 +1153,32 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
           <td>${numField(rules.announcements[k], 'base', (v) => upA(k, v))}</td>
           ${['multiplied', 'shared', 'canFail'].map((f) => html`<td><${YesNo} label=${f + ' ' + L[k]} value=${rules.announcements[k][f]} onChange=${(v) => upA(k, Object.assign({}, rules.announcements[k], { [f]: v }))} /></td>`)}</tr>`)}
       </tbody></table>
+    </div>`;
+  }
+
+  /** Default value sets offered to start from: the presets, plus the rules of the last game when they differ. */
+  function ruleDefaults(doc, lastRules) {
+    const list = E.presetRules().filter((r) => r.id !== 'custom-2016').map((r) => ({ key: r.id, name: r.name, rules: r }));
+    if (lastRules && !list.some((d) => E.sameRules(d.rules, lastRules))) {
+      list.unshift({ key: 'last', name: `Règles de la dernière partie (${lastRules.name})`, rules: lastRules });
+    }
+    return list;
+  }
+
+  function RulesDialog({ doc, game, onSubmit, onClose }) {
+    const current = E.rulesFor(doc, game);
+    const defaults = [{ key: 'current', name: `Règles actuelles (${current.name})`, rules: current }].concat(ruleDefaults(doc, null));
+    const [rules, setRules] = useState(clone(current));
+    const [baseKey, setBaseKey] = useState('current');
+    const [scope, setScope] = useState('following');
+    const [error, setError] = useState('');
+    const onBase = (key) => { setBaseKey(key); setRules(clone(defaults.find((d) => d.key === key).rules)); };
+    async function submit() {
+      const res = await onSubmit(rules, scope);
+      if (res && res.error) setError(res.error);
+    }
+    return html`<${Modal} title="Règles de la partie" onClose=${onClose}>
+      <${RulesForm} rules=${rules} setRules=${setRules} defaults=${defaults} baseKey=${baseKey} onBase=${onBase} />
       <h2>Appliquer</h2>
       <label class="field"><input type="radio" name="scope" checked=${scope === 'following'} onChange=${() => setScope('following')} /> aux donnes suivantes seulement</label>
       <label class="field"><input type="radio" name="scope" checked=${scope === 'all'} onChange=${() => setScope('all')} /> à toute la partie (recalcul complet)</label>
@@ -1239,13 +1305,15 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
 
   function NewGame({ doc, commit, go }) {
     const last = doc.games.length ? doc.games[doc.games.length - 1] : null;
-    const rulesChoices = E.presetRules().filter((r) => r.id !== 'custom-2016').map((r) => ({ id: r.id, name: r.name }));
-    if (last && !rulesChoices.some((r) => r.id === last.rulesId)) {
-      const r = doc.rules.find((x) => x.id === last.rulesId);
-      if (r) rulesChoices.unshift({ id: r.id, name: `${r.name} (règles de la dernière partie)` });
-    }
+    const lastRules = last && doc.rules.find((r) => r.id === last.rulesId);
+    const defaults = ruleDefaults(doc, lastRules);
+    const initial = (lastRules && defaults.find((d) => E.sameRules(d.rules, lastRules))) || defaults.find((d) => d.key === 'custom');
     const [date, setDate] = useState(today());
-    const [rulesId, setRulesId] = useState(last ? last.rulesId : 'custom');
+    const [baseKey, setBaseKey] = useState(initial.key);
+    const [rules, setRules] = useState(clone(initial.rules));
+    const onBase = (key) => { setBaseKey(key); setRules(clone(defaults.find((d) => d.key === key).rules)); };
+    const base = defaults.find((d) => d.key === baseKey);
+    const modified = !E.sameRules(base.rules, rules);
     const [selected, setSelected] = useState([]);
     const [newName, setNewName] = useState('');
     const [error, setError] = useState('');
@@ -1271,17 +1339,17 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
           if (!dr.players.some((x) => x.id === id)) dr.players.push({ id: p.id, firstName: p.firstName });
           return id;
         });
-        return E.createGame(dr, { date, rulesId, playerIds: ids }).id;
+        return E.createGame(dr, { date, rules, playerIds: ids }).id;
       });
       if (res.error) setError(res.error); else go('#/game/' + res.result);
     }
     return html`<div>
       <h2>Nouvelle partie</h2>
-      <div class="grid2">
-        <${Field} label="Date"><input type="date" value=${date} onInput=${(e) => setDate(e.target.value)} /><//>
-        <${Field} label="Règles"><select value=${rulesId} onChange=${(e) => setRulesId(e.target.value)}>
-          ${rulesChoices.map((r) => html`<option value=${r.id} selected=${r.id === rulesId}>${r.name}</option>`)}</select><//>
-      </div>
+      <${Field} label="Date"><input type="date" value=${date} onInput=${(e) => setDate(e.target.value)} /><//>
+      <details class="card rules-card">
+        <summary>Règles : <b>${base.name}</b>${modified ? ' — modifiées' : ''}</summary>
+        <${RulesForm} rules=${rules} setRules=${setRules} defaults=${defaults} baseKey=${baseKey} onBase=${onBase} />
+      </details>
       <h2>Joueurs (${selected.length}) — dans l’ordre de la table</h2>
       ${selected.length ? html`<div class="card">${selected.map((id, i) => html`<div class="row" style="padding:3px 0">
         <b>${i + 1}.</b><span class="grow">${nameOf(id)}</span>
