@@ -286,18 +286,21 @@ test('adding a deal advances the dealer', () => {
   assert.equal(E.expectedDealer(game), 'Fred');
 });
 
-test('§3 / criterion 7: choosing a dealer two places later adds one passed deal', () => {
-  const { doc, game } = newGame();
+const fftGame = () => newGame(five, 'fft'); // Goulasch disabled: skipped dealers become passed deals
+
+test('§3 / criterion 7: without Goulasch, a dealer two places later adds passed deals', () => {
+  const { doc, game } = fftGame();
   E.addDeal(doc, game, input({ dealer: 'Ricou' }));          // expected next: Fred
   const { passes } = E.addDeal(doc, game, input({ dealer: 'Greg' }));  // skips Fred, Willy
   assert.equal(passes.length, 2);
   assert.deepEqual(plain(passes.map((p) => p.dealer)), ['Fred', 'Willy']);
   assert.deepEqual(plain(game.deals.map((d) => d.type)), ['contract', 'passed', 'passed', 'contract']);
   assert.deepEqual(plain(game.deals.map((d) => d.number)), [1, 2, 3, 4]);
+  assert.deepEqual(plain(E.dealerGaps(game)), []);
 });
 
 test('§3 example: 5 players, 3rd expected and 2nd chosen -> 4 passed deals, wrapping around', () => {
-  const { doc, game } = newGame();
+  const { doc, game } = fftGame();
   E.addDeal(doc, game, input({ dealer: 'Ricou' }));
   E.addDeal(doc, game, input({ dealer: 'Fred' }));            // next expected: Willy (3rd)
   const { passes } = E.addDeal(doc, game, input({ dealer: 'Fred' })); // choose the 2nd
@@ -305,7 +308,7 @@ test('§3 example: 5 players, 3rd expected and 2nd chosen -> 4 passed deals, wra
 });
 
 test('passed deals are numbered but score nothing', () => {
-  const { doc, game } = newGame();
+  const { doc, game } = fftGame();
   E.addDeal(doc, game, input({ dealer: 'Ricou' }));
   E.addDeal(doc, game, input({ dealer: 'Willy' }));
   const { rows, totals } = E.recomputeGame(doc, game);
@@ -316,22 +319,45 @@ test('passed deals are numbered but score nothing', () => {
   assert.equal(E.sumScores(totals), 0);
 });
 
-test('a passed deal can be edited into a Goulasch afterwards', () => {
-  const { doc, game } = newGame();
+test('with the Goulasch enabled, no passed deal is added: the gap is only reported', () => {
+  const { doc, game } = newGame(); // custom rules: Goulasch enabled
+  assert.ok(E.goulaschEnabled(E.rulesFor(doc, game)));
   E.addDeal(doc, game, input({ dealer: 'Ricou' }));
-  const { passes } = E.addDeal(doc, game, input({ dealer: 'Willy' }));
-  assert.equal(passes.length, 1);
-  E.updateDeal(doc, game, passes[0].id, { type: 'goulasch', dealer: 'Fred', players: five, dead: [], winner: 'Greg', loser: 'Lolo' });
-  assert.equal(game.deals[1].type, 'goulasch');
-  assert.equal(game.deals[1].scores.Greg, 40);
-  assert.equal(E.sumScores(E.recomputeGame(doc, game).totals), 0);
+  const ok = E.addDeal(doc, game, input({ dealer: 'Fred' }));
+  assert.equal(ok.dealerWarning, false);
+  const skipped = E.addDeal(doc, game, input({ dealer: 'Greg' })); // Willy was expected
+  assert.equal(skipped.passes.length, 0);
+  assert.equal(skipped.dealerWarning, true);
+  assert.deepEqual(plain(game.deals.map((d) => d.type)), ['contract', 'contract', 'contract']);
+  assert.deepEqual(plain(E.dealerGaps(game)), [skipped.deal.id]);
 });
 
-test('the first deal of a game is free: no passed deal before it', () => {
+test('the scorer can still correct the dealer afterwards: the warning disappears', () => {
   const { doc, game } = newGame();
-  const { passes } = E.addDeal(doc, game, input({ dealer: 'Greg' }));
-  assert.equal(passes.length, 0);
-  assert.equal(E.expectedDealer(game), 'Lolo');
+  E.addDeal(doc, game, input({ dealer: 'Ricou' }));
+  const second = E.addDeal(doc, game, input({ dealer: 'Willy' })).deal; // Fred expected
+  assert.equal(E.dealerGaps(game).length, 1);
+  E.updateDeal(doc, game, second.id, input({ dealer: 'Fred' }));
+  assert.equal(E.dealerGaps(game).length, 0);
+});
+
+test('a forgotten deal inserted in the gap also clears the warning', () => {
+  const { doc, game } = newGame();
+  const first = E.addDeal(doc, game, input({ dealer: 'Ricou' })).deal;
+  E.addDeal(doc, game, input({ dealer: 'Willy' })); // Fred was forgotten
+  assert.equal(E.dealerGaps(game).length, 1);
+  E.insertDealAfter(doc, game, first.id, input({ dealer: 'Fred' }));
+  assert.equal(E.dealerGaps(game).length, 0);
+});
+
+test('the first deal of a game is free: no passed deal and no warning before it', () => {
+  for (const rulesId of ['custom', 'fft']) {
+    const { doc, game } = newGame(five, rulesId);
+    const r = E.addDeal(doc, game, input({ dealer: 'Greg' }));
+    assert.equal(r.passes.length, 0);
+    assert.equal(r.dealerWarning, false);
+    assert.equal(E.expectedDealer(game), 'Lolo');
+  }
 });
 
 // --------------------------- corrections (§9) ------------------------------

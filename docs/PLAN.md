@@ -121,7 +121,9 @@ README.md
 - **Dealer and passed deals**:
   - `expectedDealer` rotates in table order among present players.
   - `insertPassesUntil(dealer)` loops over the table: 4 passed deals in the §3 example.
-  - Passed deals are added even when the Goulasch is enabled (acceptance criterion 7); a skipped deal that was really a Goulasch is then edited into one. The first deal of a game is free: no passed deal is added before it.
+  - Goulasch disabled: choosing a dealer other than the expected one adds a passed deal for every skipped dealer (acceptance criterion 7).
+  - Goulasch enabled: nobody skips a deal (everybody passing means a Goulasch is played), so no passed deal is ever added automatically. The scorer may still pick another dealer, but the app warns that a deal is missing or a player forgot to deal; the sheet marks the deal with ⚠ until the dealer is corrected or the missing deal is inserted.
+  - The first deal of a game is free: no dealer is expected for it.
 - **Input validation**:
   - The winner must differ from the loser, and a dead player is refused.
   - The point difference is an integer from 0 to 91.

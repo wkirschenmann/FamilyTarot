@@ -80,6 +80,10 @@ details > summary { cursor: pointer; padding: 6px 0; color: var(--muted); }
 header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); color: #fff; }
 .sheet td.label, .sheet th.label { min-width: 128px; max-width: 150px; font-size: .86rem; }
 .sheet th, .sheet td { padding: 5px 6px; }
+
+.warn { background: #fff1d6; color: #6b4a00; border: 1px solid #f0c36b; border-radius: 8px; padding: 8px 10px; margin: 10px 0; font-size: .92rem; }
+@media (prefers-color-scheme: dark) { .warn { background: #3a2e12; color: #ffd98a; border-color: #6b5420; } }
+.warn-mark { color: var(--warn); cursor: help; }
   </style>
 </head>
 <body>
@@ -531,29 +535,49 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
   }
 
   /**
-   * Appends a deal. If the chosen dealer differs from the expected one, a passed deal is added for every
-   * skipped dealer, looping around the table (a passed deal that was really a Goulasch is then edited).
-   * The very first deal of a game is free: no passed deal is added before it.
-   * Returns { deal, passes }.
+   * Appends a deal. When the chosen dealer is not the expected one:
+   * - Goulasch disabled: a passed deal is added for every skipped dealer, looping around the table;
+   * - Goulasch enabled: nobody skips a deal (everybody passing means a Goulasch is played), so nothing is added
+   *   and the gap is only reported (`dealerWarning`): a deal is missing or a player forgot to deal.
+   * The very first deal of a game is free: no dealer is expected for it.
+   * Returns { deal, passes, dealerWarning }.
    */
   function addDeal(doc, game, input) {
     const rules = rulesFor(doc, game);
     const deal = checkedDeal(rules, buildDeal(game, input, game.rulesId));
     const passes = [];
-    if (game.deals.length) {
-      let d = expectedDealer(game);
-      for (let guard = 0; d !== deal.dealer && guard < game.tableOrder.length; guard += 1) {
-        passes.push({
-          id: newId(), number: 0, dealer: d, type: 'passed', rulesId: game.rulesId,
-          players: presentPlayers(game), dead: [], announcements: [], scores: {},
-        });
-        d = nextDealer(game, d);
+    let dealerWarning = false;
+    if (game.deals.length && deal.dealer !== expectedDealer(game)) {
+      if (goulaschEnabled(rules)) {
+        dealerWarning = true;
+      } else {
+        let d = expectedDealer(game);
+        for (let guard = 0; d !== deal.dealer && guard < game.tableOrder.length; guard += 1) {
+          passes.push({
+            id: newId(), number: 0, dealer: d, type: 'passed', rulesId: game.rulesId,
+            players: presentPlayers(game), dead: [], announcements: [], scores: {},
+          });
+          d = nextDealer(game, d);
+        }
       }
     }
     for (const p of passes) game.deals.push(p);
     game.deals.push(deal);
     recomputeGame(doc, game);
-    return { deal, passes };
+    return { deal, passes, dealerWarning };
+  }
+
+  /**
+   * Ids of the deals whose dealer is not the one expected after the previous deal (table order, present players).
+   * With the Goulasch enabled this means a deal is missing or a player forgot to deal.
+   */
+  function dealerGaps(game) {
+    const gaps = [];
+    for (let i = 1; i < game.deals.length; i += 1) {
+      if (game.deals[i].type === 'passed') continue;
+      if (game.deals[i].dealer !== nextDealer(game, game.deals[i - 1].dealer)) gaps.push(game.deals[i].id);
+    }
+    return gaps;
   }
 
   /** Inserts a forgotten deal after `afterDealId` (null = at the very beginning). No passed deals are added. */
@@ -681,7 +705,7 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
     newId, setIdGenerator,
     presetRules, validateRules, validContracts, validAnnouncements, goulaschEnabled,
     roundTo, contractValue, contractScores, announcementScores, sumScores, activePlayers, rulesFor,
-    recomputeGame, presentPlayers, nextDealer, expectedDealer,
+    recomputeGame, presentPlayers, nextDealer, expectedDealer, dealerGaps,
     validateDeal, validateAnnouncement, assistedResult,
     createDocument, migrate, findOrAddPlayer, playerName,
     createGame, currentGame, addDeal, insertDealAfter, updateDeal, deleteDeal,
@@ -820,8 +844,10 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
     const tableOrder = game.tableOrder;
 
     // Who will be skipped (passed deals) when the dealer differs from the expected one.
+    const goulaschOn = E.goulaschEnabled(rules);
     let skipped = [];
-    if (!editing && !inserting && game.deals.length) {
+    const unexpectedDealer = !editing && !inserting && game.deals.length > 0 && dealer !== E.expectedDealer(game);
+    if (!goulaschOn && !editing && !inserting && game.deals.length) {
       let d = E.expectedDealer(game);
       for (let i = 0; d !== dealer && i < game.tableOrder.length; i += 1) { skipped.push(d); d = E.nextDealer(game, d); }
     }
@@ -868,8 +894,8 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
       <${Field} label="Donneur">
         <${PlayerSelect} doc=${doc} ids=${players} value=${dealer} onChange=${setDealer} />
       <//>
-      ${skipped.length ? html`<div class="info">${skipped.length} tour${skipped.length > 1 ? 's' : ''} passé${skipped.length > 1 ? 's' : ''} ajouté${skipped.length > 1 ? 's' : ''} automatiquement (${skipped.map((p) => E.playerName(doc, p)).join(', ')}).
-        ${goulasch ? ' Si l’un d’eux était un Goulasch, modifiez-le ensuite.' : ''}</div>` : null}
+      ${skipped.length ? html`<div class="info">${skipped.length} tour${skipped.length > 1 ? 's' : ''} passé${skipped.length > 1 ? 's' : ''} ajouté${skipped.length > 1 ? 's' : ''} automatiquement (${skipped.map((p) => E.playerName(doc, p)).join(', ')}).</div>` : null}
+      ${goulaschOn && unexpectedDealer ? html`<div class="warn" role="alert">⚠ Ce n’est pas le donneur attendu (${E.playerName(doc, E.expectedDealer(game))}). Avec le Goulasch, personne ne passe son tour : il manque peut-être une donne, ou un joueur a oublié de distribuer. Vous pouvez valider quand même.</div>` : null}
       <${Field} label="Contrat">
         <select value=${kind} onChange=${(e) => setKind(e.target.value)}>
           ${contractOptions.map((k) => html`<option value=${k} selected=${k === kind}>${L[k]}</option>`)}
@@ -1051,6 +1077,7 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
   function Sheet({ doc, game, readOnly, onRow }) {
     const { rows, totals } = E.recomputeGame(doc, clone(game));
     const ids = game.tableOrder;
+    const gaps = E.dealerGaps(game);
     const cell = (row, id) => {
       const d = row.deal;
       if (!d.players.includes(id)) return html`<td class="out"></td>`;
@@ -1065,7 +1092,8 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
         <td class="label">${row.ann
           ? html`↳ ${L[row.ann.type]} — ${E.playerName(doc, row.ann.beneficiary)}`
           : html`<b>${row.number}.</b> ${dealLabel(doc, row.deal)}<small class="muted" style="display:block">Donneur : ${E.playerName(doc, row.deal.dealer)}</small>`}
-          ${row.balanced ? null : html` <span class="neg" title="La somme des scores n’est pas nulle">⚠</span>`}</td>
+          ${row.balanced ? null : html` <span class="neg" title="La somme des scores n’est pas nulle">⚠</span>`}
+          ${!row.ann && gaps.includes(row.deal.id) ? html` <span class="warn-mark" title="Donneur inattendu : il manque peut-être une donne, ou un joueur a oublié de distribuer.">⚠</span>` : null}</td>
         ${ids.map((id) => cell(row, id))}</tr>`)}</tbody>
       <tfoot><tr><td class="label">Total</td>${ids.map((id) => html`<td class=${cls(totals[id] || 0)}>${fmt(totals[id] || 0)}</td>`)}</tr></tfoot>
     </table></div>`;
@@ -1131,6 +1159,7 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
         <button class="btn" onClick=${() => setDialog({ kind: 'players' })}>Joueurs</button>
         <button class="btn" onClick=${() => setDialog({ kind: 'rules' })}>Règles</button>
       </div>`}
+      ${E.dealerGaps(game).length ? html`<div class="warn" role="status">⚠ ${E.dealerGaps(game).length > 1 ? 'Plusieurs donnes ont' : 'Une donne a'} un donneur inattendu (repéré${E.dealerGaps(game).length > 1 ? 'es' : 'e'} par ⚠) : il manque peut-être des donnes, ou un joueur a oublié de distribuer.</div>` : null}
       ${game.deals.length ? html`<${Sheet} doc=${doc} game=${game} readOnly=${readOnly} onRow=${onRow} />`
         : html`<div class="card muted">Aucune donne pour l’instant.</div>`}
       ${readOnly ? null : html`<div class="row end" style="margin-top:14px">
