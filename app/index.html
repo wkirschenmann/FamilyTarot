@@ -752,6 +752,67 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
     return doc;
   }
 
+  /**
+   * Adds the content of another tarot.json (an import, a backup) to `local` without deleting or changing anything
+   * already there. Players are matched by first name (case-insensitive), rule sets by their values, games by id: a game
+   * already present is left as it is. Only one game can be in progress: an incoming game in progress is archived when
+   * the local document already has one. Returns a report of what was added or skipped.
+   */
+  function mergeDocument(local, incomingDoc) {
+    const incoming = migrate(JSON.parse(JSON.stringify(incomingDoc)));
+    const report = { gamesAdded: 0, gamesSkipped: 0, playersAdded: 0, rulesAdded: 0, entriesAdded: 0, archivedInProgress: false };
+    const norm = (n) => n.trim().toLowerCase();
+
+    const pmap = {};
+    for (const p of incoming.players) {
+      const same = local.players.find((x) => norm(x.firstName) === norm(p.firstName));
+      if (same) { pmap[p.id] = same.id; continue; }
+      const id = local.players.some((x) => x.id === p.id) ? newId() : p.id;
+      local.players.push(Object.assign({}, p, { id }));
+      pmap[p.id] = id;
+      report.playersAdded += 1;
+    }
+    const rmap = {};
+    for (const r of incoming.rules) {
+      const same = local.rules.find((x) => sameRules(x, r));
+      if (same) { rmap[r.id] = same.id; continue; }
+      const id = local.rules.some((x) => x.id === r.id) ? newId() : r.id;
+      local.rules.push(Object.assign({}, r, { id }));
+      rmap[r.id] = id;
+      report.rulesAdded += 1;
+    }
+    const mapKeys = (obj) => Object.fromEntries(Object.entries(obj || {}).map(([k, v]) => [pmap[k] || k, v]));
+    const pm = (id) => (id ? pmap[id] || id : id);
+    const added = new Set();
+    for (const g of incoming.games) {
+      if (local.games.some((x) => x.id === g.id)) { report.gamesSkipped += 1; continue; }
+      g.tableOrder = g.tableOrder.map(pm);
+      g.present = g.present.map(pm);
+      g.rulesId = rmap[g.rulesId] || g.rulesId;
+      for (const d of g.deals) {
+        d.dealer = pm(d.dealer);
+        d.players = d.players.map(pm);
+        d.dead = d.dead.map(pm);
+        for (const key of ['taker', 'partner', 'winner', 'loser']) if (d[key]) d[key] = pm(d[key]);
+        if (d.rulesId) d.rulesId = rmap[d.rulesId] || d.rulesId;
+        d.scores = mapKeys(d.scores);
+        for (const a of d.announcements || []) { a.beneficiary = pm(a.beneficiary); a.scores = mapKeys(a.scores); }
+      }
+      if (g.state === 'in_progress' && local.games.some((x) => x.state === 'in_progress')) {
+        g.state = 'archived';
+        report.archivedInProgress = true;
+      }
+      local.games.push(g);
+      added.add(g.id);
+      report.gamesAdded += 1;
+    }
+    if (!Array.isArray(local.log)) local.log = [];
+    for (const e of incoming.log || []) {
+      if (added.has(e.game) && !local.log.some((x) => x.id === e.id)) { local.log.push(e); report.entriesAdded += 1; }
+    }
+    return report;
+  }
+
   function findOrAddPlayer(doc, firstName) {
     const name = firstName.trim();
     if (!name) throw new Error('Le prénom est vide.');
@@ -1136,7 +1197,7 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
     roundTo, contractValue, contractScores, announcementScores, sumScores, activePlayers, rulesFor,
     recomputeGame, evolution, presentPlayers, nextDealer, expectedDealer, dealerGaps, attackingTeam,
     validateDeal, validateAnnouncement, assistedResult,
-    createDocument, migrate, findOrAddPlayer, playerName, dealSummary, describeChange, gameTable, statsTables, toCsv,
+    createDocument, migrate, mergeDocument, findOrAddPlayer, playerName, dealSummary, describeChange, gameTable, statsTables, toCsv,
     createGame, currentGame, addDeal, insertDealAfter, updateDeal, deleteDeal,
     addAnnouncement, updateAnnouncement, deleteAnnouncement,
     setPresentPlayers, addPlayerToTable, changeRules, endGame, setGameDate, deleteGame, ranking, computeStats,
@@ -1974,7 +2035,7 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
 
   // ------------------------------ home ---------------------------------------
 
-  function Home({ doc, commit, go, replaceDoc }) {
+  function Home({ doc, commit, go }) {
     const current = E.currentGame(doc);
     const archived = doc.games.filter((g) => g.state !== 'in_progress').slice().reverse().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     const names = (g) => g.tableOrder.map((id) => E.playerName(doc, id)).join(', ');
@@ -1988,10 +2049,15 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
       e.target.value = '';
       if (!file) return;
       try {
-        const next = E.migrate(JSON.parse(await file.text()));
-        if (!confirm(`Remplacer toutes les données actuelles par ce fichier (${next.games.length} parties) ?`)) return;
-        const res = await replaceDoc(next);
-        setMessage(res.error ? res.error : 'Données importées.');
+        const incoming = E.migrate(JSON.parse(await file.text()));
+        if (!confirm(`Ajouter le contenu de ce fichier (${incoming.games.length} partie${incoming.games.length > 1 ? 's' : ''}) aux données actuelles ? Rien de ce qui existe déjà n’est supprimé ni modifié.`)) return;
+        let report = null;
+        const res = await commit((dr) => { report = E.mergeDocument(dr, incoming); });
+        if (res.error) { setMessage(res.error); return; }
+        const parts = [`${report.gamesAdded} partie${report.gamesAdded > 1 ? 's' : ''} ajoutée${report.gamesAdded > 1 ? 's' : ''}`];
+        if (report.gamesSkipped) parts.push(`${report.gamesSkipped} déjà présente${report.gamesSkipped > 1 ? 's' : ''} (laissée${report.gamesSkipped > 1 ? 's' : ''} telle${report.gamesSkipped > 1 ? 's' : ''} quelle${report.gamesSkipped > 1 ? 's' : ''})`);
+        if (report.playersAdded) parts.push(`${report.playersAdded} joueur${report.playersAdded > 1 ? 's' : ''} ajouté${report.playersAdded > 1 ? 's' : ''}`);
+        setMessage(parts.join(', ') + '.' + (report.archivedInProgress ? ' La partie en cours du fichier a été archivée, car une partie est déjà en cours ici.' : ''));
       } catch (err) { setMessage('Import impossible : ' + err.message); }
     }
     return html`<div>
@@ -2015,7 +2081,7 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
         <button class="btn" onClick=${() => fileRef.current.click()}>Importer (JSON)</button>
         <input ref=${fileRef} type="file" accept="application/json,.json" hidden onChange=${importJson} />
       </div>
-      <p class="muted">Sauvegardez régulièrement : les données sont stockées dans ce navigateur uniquement.</p>
+      <p class="muted">Sauvegardez régulièrement : les données sont stockées dans ce navigateur uniquement. L’import ajoute le contenu du fichier aux données actuelles, sans rien supprimer.</p>
       ${message ? html`<div class="info" role="status">${message}</div>` : null}
     </div>`;
   }
@@ -2102,16 +2168,6 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
       const res = await restore(entry, 'redo');
       if (res.ok) { setRedoStack(redoStack.slice(0, -1)); setUndoStack(undoStack.concat(entry).slice(-MAX_UNDO)); }
     }
-    async function replaceDoc(next) {
-      setUndoStack([]); setRedoStack([]);
-      const copy = clone(next);
-      copy.rev = (docRef.current.rev || 0) + 1;
-      copy.updatedAt = new Date().toISOString();
-      try { await idb.put('doc', copy); } catch (e) { return { error: 'Sauvegarde impossible : ' + e.message }; }
-      docRef.current = copy;
-      setDoc(copy);
-      return { ok: true };
-    }
     const go = (hash) => { if (location.hash === hash) setRoute(hash); else location.hash = hash; };
 
     if (fatal) return html`<main><div class="error">${fatal}</div></main>`;
@@ -2127,7 +2183,7 @@ svg.chart .tick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabu
       else body = html`<div class="error">Partie introuvable.</div>`;
     } else if (route === '#/new') { body = html`<${NewGame} doc=${doc} commit=${commit} go=${go} />`; title = 'Nouvelle partie'; }
     else if (route === '#/stats') { body = html`<${StatsScreen} doc=${doc} />`; title = 'Statistiques'; }
-    else body = html`<${Home} doc=${doc} commit=${commit} go=${go} replaceDoc=${replaceDoc} />`;
+    else body = html`<${Home} doc=${doc} commit=${commit} go=${go} />`;
 
     return html`<header class="top">
         ${route === '#/' || route === '' ? null : html`<button class="btn small" onClick=${() => go('#/')} aria-label="Accueil">←</button>`}

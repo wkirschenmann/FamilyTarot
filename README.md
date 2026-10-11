@@ -39,7 +39,7 @@ node import-xlsm.js "Calcul Scores Tarot.xlsm"     # writes data/tarot.json and 
 node verify-stats.js "Calcul Scores Tarot.xlsm"    # compares the statistics with the workbook's STATISTIQUES sheet
 ```
 
-Then use "Importer (JSON)" on the app's home screen.
+Then use "Importer (JSON)" on the app's home screen: it adds the file's content to the data already on the device and never deletes or changes anything (games already present are left as they are, players are matched by first name).
 
 ## License
 

@@ -74,6 +74,8 @@ What the workbook analysis confirmed:
 
 - Undo / redo and change log (spec §9, proposed features): every action on a game is written to `doc.log` (time, game, `by` reserved for the Google identity, one French sentence per change with before → after for modifications, built by `TarotEngine.describeChange`) and can be undone / redone (in memory, last 30 actions, cleared on reload or JSON import; the log itself is kept in the document). "Annuler", "Rétablir" and "Journal" buttons on the game in progress.
 
+- JSON import is a merge (`TarotEngine.mergeDocument`): it adds the file's games, players (matched by first name) and rule sets (matched by values) to the local data and never deletes or changes what is already there; a game already present (same id) is left as it is, so importing the same file twice changes nothing; an incoming game in progress is archived if one is already in progress locally.
+
 ## Repository structure
 
 ```

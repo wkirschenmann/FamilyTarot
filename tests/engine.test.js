@@ -1019,3 +1019,101 @@ test('deleteGame removes the game and its log entries only', () => {
   assert.deepEqual(plain(doc.log.map((e) => e.id)), ['b']);
   assert.throws(() => E.deleteGame(doc, 'missing'));
 });
+
+// ------------------------------- merge on import ---------------------------
+
+function incomingDoc() {
+  // a document as produced by the workbook import: its own player ids, a game in progress, a log entry
+  const doc = E.createDocument();
+  doc.players.push({ id: 'p-lolo', firstName: 'Lolo' }, { id: 'p-fred', firstName: 'Fred' }, { id: 'p-willy', firstName: 'Willy' },
+    { id: 'p-greg', firstName: 'Greg' }, { id: 'p-ricou', firstName: 'Ricou' });
+  const ids = ['p-lolo', 'p-fred', 'p-willy', 'p-greg', 'p-ricou'];
+  const g = E.createGame(doc, { date: '2020-05-01', rulesId: 'custom', playerIds: ids });
+  g.id = 'g-2020-05-01';
+  E.addDeal(doc, g, { type: 'contract', dealer: 'p-lolo', players: ids, dead: [], contract: 'garde', taker: 'p-willy', partner: 'p-fred', succeeded: true, pointDiff: 17 });
+  const d = g.deals[0];
+  E.addAnnouncement(doc, g, d.id, { type: 'misere', beneficiary: 'p-ricou' });
+  doc.log.push({ id: 'e1', at: '2026-01-01T00:00:00Z', game: g.id, by: null, text: ['x'] });
+  E.endGame(g);
+  const cur = E.createGame(doc, { date: '2026-09-04', rulesId: 'custom', playerIds: ids });
+  cur.id = 'g-current';
+  E.addDeal(doc, cur, { type: 'contract', dealer: 'p-lolo', players: ids, dead: [], contract: 'petite', taker: 'p-greg', partner: 'p-lolo', succeeded: false, pointDiff: 3 });
+  return doc;
+}
+
+function localDoc() {
+  const doc = E.createDocument();
+  const lolo = E.findOrAddPlayer(doc, 'lolo');          // same person, other id and case
+  const aude = E.findOrAddPlayer(doc, 'Aude');
+  const ids = [lolo.id, aude.id, E.findOrAddPlayer(doc, 'Greg').id];
+  const g = E.createGame(doc, { date: '2026-10-01', rulesId: 'fft', playerIds: ids });
+  E.addDeal(doc, g, { type: 'contract', dealer: ids[0], players: ids, dead: [], contract: 'petite', taker: ids[1], partner: null, succeeded: true, pointDiff: 5 });
+  return { doc, game: g, ids };
+}
+
+test('merge: nothing already stored is deleted or changed', () => {
+  const { doc } = localDoc();
+  const before = clonePlain(doc);
+  const report = E.mergeDocument(doc, incomingDoc());
+  assert.equal(report.gamesAdded, 2);
+  assert.equal(report.gamesSkipped, 0);
+  assert.deepEqual(clonePlain(doc.games[0]), before.games[0], 'the local game is untouched');
+  for (const p of before.players) assert.deepEqual(clonePlain(doc.players.find((x) => x.id === p.id)), p);
+  assert.equal(doc.games.length, 3);
+});
+
+test('merge: players are matched by first name and every reference is remapped', () => {
+  const { doc, ids } = localDoc();
+  E.mergeDocument(doc, incomingDoc());
+  assert.equal(doc.players.filter((p) => p.firstName.toLowerCase() === 'lolo').length, 1, 'no duplicate Lolo');
+  const merged = doc.games.find((g) => g.id === 'g-2020-05-01');
+  assert.ok(merged.tableOrder.includes(ids[0]), 'the imported game uses the local Lolo id');
+  assert.ok(!JSON.stringify(merged).includes('p-lolo'), 'no leftover imported id');
+  const known = new Set(doc.players.map((p) => p.id));
+  for (const id of merged.tableOrder) assert.ok(known.has(id));
+  for (const d of merged.deals) {
+    assert.deepEqual(plain(Object.keys(d.scores).sort()), plain(merged.tableOrder.slice().sort()));
+    assert.ok(known.has(d.taker) && known.has(d.partner) && known.has(d.dealer));
+  }
+  assert.equal(E.sumScores(E.recomputeGame(doc, merged).totals), 0);
+  const stats = E.computeStats(doc, {});
+  assert.equal(stats.players[ids[0]].games, 3, 'Lolo: the local game and the two imported ones');
+});
+
+test('merge: importing the same file twice changes nothing the second time', () => {
+  const { doc } = localDoc();
+  const incoming = incomingDoc();
+  E.mergeDocument(doc, incoming);
+  const once = clonePlain(doc);
+  const report = E.mergeDocument(doc, incoming);
+  assert.equal(report.gamesAdded, 0);
+  assert.equal(report.gamesSkipped, 2);
+  assert.deepEqual(clonePlain(doc), once);
+});
+
+test('merge: the incoming game in progress is archived when one is already in progress', () => {
+  const { doc, game } = localDoc();
+  assert.equal(game.state, 'in_progress');
+  const report = E.mergeDocument(doc, incomingDoc());
+  assert.equal(report.archivedInProgress, true);
+  assert.equal(doc.games.filter((g) => g.state === 'in_progress').length, 1);
+  assert.equal(E.currentGame(doc).id, game.id);
+  // without a local game in progress, the incoming one stays in progress
+  const empty = E.createDocument();
+  E.mergeDocument(empty, incomingDoc());
+  assert.equal(E.currentGame(empty).id, 'g-current');
+});
+
+test('merge: rule sets are matched by values, log entries follow their game, ids never collide', () => {
+  const { doc } = localDoc();
+  const incoming = incomingDoc();
+  incoming.rules.find((r) => r.id === 'custom').contracts.garde.coef = 3; // a differently configured rule set under the same id
+  E.mergeDocument(doc, incoming);
+  const merged = doc.games.find((g) => g.id === 'g-2020-05-01');
+  const rules = doc.rules.find((r) => r.id === merged.rulesId);
+  assert.equal(rules.contracts.garde.coef, 3, 'the game keeps its own rules');
+  assert.equal(doc.rules.find((r) => r.id === 'custom').contracts.garde.coef, 2, 'the local rule set is not overwritten');
+  assert.equal(new Set(doc.rules.map((r) => r.id)).size, doc.rules.length);
+  assert.ok(doc.log.some((e) => e.id === 'e1'));
+  assert.throws(() => E.mergeDocument(doc, { nope: true }));
+});
