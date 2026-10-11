@@ -51,6 +51,19 @@ What the workbook analysis confirmed:
 - **Licence**: Apache 2.0. The repository's `LICENSE` file already is; it will be mentioned in the README, and the Preact+htm block, MIT-licensed, keeps its header.
 - **Language**: the repository (code, comments, identifiers, docs, commits, PRs) is in English. User-facing strings stay in French. Data keys in `tarot.json` are English; the examples below use English names.
 
+## Status
+
+- Iteration 1 (lot 0): done: PWA skeleton published on GitHub Pages.
+- Iteration 2 (lots 1 + 2): done: engine (`<script id="engine">`), local UI, IndexedDB, JSON export/import. The engine was replayed against the 3 220 lines of the real workbook (kept out of the repository): 3 213 lines are reproduced exactly (44 of them with the pre-2016 rule set); the 7 others are known oddities of the old file (2 gardes with a gap of −25 on 2015-11-06, 5 petits au bout with an inverted sign) that the import will freeze as `historical`.
+- Pousse: the FFT preset follows the official FFT rulebook ([Règlement FFT, donnes libres](https://fftarot.fr/assets/documents/ReglementFFT_DonnesLibres.pdf)), which has no Pousse (Prise ×1, Garde ×2, Garde sans ×4, Garde contre ×6; base 25) and no misère: both stay disabled in that preset. In the other presets the Pousse is disabled with coefficient 1 (the workbook had 1.5 in the custom set, which is not an integer).
+- FFT preset, decided: no rounding (the rulebook does not round; the workbook preset rounded to 10 on the base, which the functional specifications still list, so that table is superseded).
+- Announced slam that fails (new announcement "Chelem annoncé non réalisé", enabled in every rule set): the attacking side loses 200 per defender (taker 2/3 and partner 1/3, or the taker alone on a self-call), whatever the contract. Not multiplied by the contract, as in the FFT rulebook. Its beneficiary is the announcer, i.e. the taker or the partner.
+- Slam inflicted by the defence on the taker (+200 per defender in the FFT rulebook): already handled by "Chelem non annoncé" with a defender as beneficiary; the announcement form says so.
+- Half points (FFT rulebook): the assisted entry accepts points to the half point; the half point goes to the winning side (40.5 → failed by 1, 41.5 → made by 1 with 2 oudlers).
+- The five worked examples of the FFT rulebook ("La marque en donnes libres") and the 3-player rule are pinned by tests. Audit of the rulebook's scoring: nothing else is missing (misère and Pousse do not exist in it).
+
+- Dark mode: the interface follows the system / browser setting (`prefers-color-scheme`) with no manual switch: palette variables, `color-scheme` for native controls, highlight colours and the browser theme colour all have dark counterparts.
+
 ## Repository structure
 
 ```
@@ -100,7 +113,7 @@ README.md
 - **`contractScores(rules, deal)`**:
   - D = (B + E) × C, rounded according to `roundOn`.
   - With 5 or more active players and a distinct partner: taker 2D, partner D, opponents −D, with sign s applied to all.
-  - Self-call: taker 4D.
+  - Self-call: taker 4D (the partner column is 0).
   - The calculation only uses integer additions and multiplications. Only the rounding divides, by 1, 5 or 10, and its result is always an integer.
   - With 4 or fewer active players: taker (n−1)D.
   - Dead players score 0.
@@ -115,7 +128,9 @@ README.md
 - **Dealer and passed deals**:
   - `expectedDealer` rotates in table order among present players.
   - `insertPassesUntil(dealer)` loops over the table: 4 passed deals in the §3 example.
-  - Goulasch replaces the passed deal when it is enabled.
+  - Goulasch disabled: choosing a dealer other than the expected one adds a passed deal for every skipped dealer (acceptance criterion 7).
+  - Goulasch enabled: nobody skips a deal (everybody passing means a Goulasch is played), so no passed deal is ever added automatically. The scorer may still pick another dealer, but the app warns that a deal is missing or a player forgot to deal; the sheet marks the deal with ⚠ until the dealer is corrected or the missing deal is inserted.
+  - The first deal of a game is free: no dealer is expected for it.
 - **Input validation**:
   - The winner must differ from the loser, and a dead player is refused.
   - The point difference is an integer from 0 to 91.
