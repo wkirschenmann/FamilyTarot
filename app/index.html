@@ -133,6 +133,10 @@ header.top .btn { background: transparent; border-color: rgba(255,255,255,.55); 
   const announcement = (valid, base, multiplied, shared, canFail) => ({ valid, base, multiplied, shared, canFail });
 
   function presetRules() {
+    // FFT preset: follows the official FFT rulebook ("Règlement FFT, donnes libres",
+    // https://fftarot.fr/assets/documents/ReglementFFT_DonnesLibres.pdf): contracts Prise x1, Garde x2,
+    // Garde sans x4, Garde contre x6 on a base of 25; poignées 20/30/40; petit au bout 10 multiplied by the
+    // contract; chelem 200/400. The rulebook has no Pousse and no misère, so both stay disabled.
     const fft = {
       id: 'fft', name: 'FFT', roundTo: 10, roundOn: 'base', split: { taker: 2, partner: 1 },
       contracts: {

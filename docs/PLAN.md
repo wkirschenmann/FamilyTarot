@@ -55,7 +55,8 @@ What the workbook analysis confirmed:
 
 - Iteration 1 (lot 0): done: PWA skeleton published on GitHub Pages.
 - Iteration 2 (lots 1 + 2): done: engine (`<script id="engine">`), local UI, IndexedDB, JSON export/import. The engine was replayed against the 3 220 lines of the real workbook (kept out of the repository): 3 213 lines are reproduced exactly (44 of them with the pre-2016 rule set); the 7 others are known oddities of the old file (2 gardes with a gap of −25 on 2015-11-06, 5 petits au bout with an inverted sign) that the import will freeze as `historical`.
-- Pousse is disabled in all presets with coefficient 1 (the workbook had 1.5, which is not an integer).
+- Pousse: the FFT preset follows the official FFT rulebook ([Règlement FFT, donnes libres](https://fftarot.fr/assets/documents/ReglementFFT_DonnesLibres.pdf)), which has no Pousse (Prise ×1, Garde ×2, Garde sans ×4, Garde contre ×6; base 25) and no misère: both stay disabled in that preset. In the other presets the Pousse is disabled with coefficient 1 (the workbook had 1.5 in the custom set, which is not an integer).
+- Known gaps between the official rulebook and the FFT preset (to be decided): the rulebook does not round (the workbook preset rounds to 10 on the base), and it has a −200 penalty for an announced but failed slam, which the engine does not model yet.
 
 ## Repository structure
 

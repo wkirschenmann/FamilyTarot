@@ -515,3 +515,30 @@ test('ranking orders players by total', () => {
   assert.equal(r[0].playerId, 'Willy');
   assert.equal(r[0].total, 168);
 });
+
+test('FFT preset follows the official FFT rulebook (no Pousse, no misère)', () => {
+  const fft = rulesById('fft');
+  const c = fft.contracts;
+  assert.deepEqual(plain([c.petite, c.garde, c.gardeSans, c.gardeContre].map((x) => [x.valid, x.base, x.coef])),
+    [[true, 25, 1], [true, 25, 2], [true, 25, 4], [true, 25, 6]]);
+  assert.equal(c.pousse.valid, false);
+  assert.equal(c.goulasch.valid, false);
+  const a = fft.announcements;
+  assert.deepEqual(plain([a.handful, a.doubleHandful, a.tripleHandful].map((x) => [x.base, x.shared, x.canFail, x.multiplied])),
+    [[20, true, true, false], [30, true, true, false], [40, true, true, false]]);
+  assert.deepEqual(plain([a.petitAuBout.base, a.petitAuBout.multiplied, a.petitAuBout.shared, a.petitAuBout.canFail]), [10, true, true, false]);
+  assert.deepEqual(plain([a.slamUnannounced.base, a.slamAnnounced.base]), [200, 400]);
+  assert.equal(a.misere.valid, false);
+  assert.deepEqual(plain(E.validContracts(fft)), ['petite', 'garde', 'gardeSans', 'gardeContre']);
+});
+
+test('FFT rulebook example: garde of +8 with 25 base gives 66 per opponent unit, petit au bout 10 x 2', () => {
+  // "25 (contrat) + 8 = 33 multiplié par 2 (garde) = 66", petit au bout "10 X 2 = 20"
+  const r = rulesById('fft');
+  r.roundTo = 1; // the rulebook does not round
+  r.roundOn = 'pts';
+  assert.equal(E.contractValue(r, 'garde', 8), 66);
+  const d = deal({ contract: 'garde', taker: 'Willy', partner: 'Fred', succeeded: true, pointDiff: 8 });
+  const pab = E.announcementScores(r, d, { type: 'petitAuBout', beneficiary: 'Willy' });
+  assert.equal(pab.Greg, -20);
+});
