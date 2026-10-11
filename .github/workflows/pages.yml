@@ -1,4 +1,4 @@
-name: Tests et publication
+name: Test and publish
 
 on:
   push:
@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
-      - name: Injection de la version
+      - name: Inject build version
         run: sed -i "s/__BUILD__/${GITHUB_SHA::7} ($(date -u +%Y-%m-%d\ %H:%M) UTC)/" app/index.html
       - uses: actions/upload-pages-artifact@v3
         with:

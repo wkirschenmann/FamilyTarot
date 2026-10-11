@@ -1,250 +1,253 @@
-# Plan — Application de scores de Tarot (remplacement du classeur Excel)
+# Plan — Tarot scoring app (replacing the Excel workbook)
 
-## Contexte
+> Repository language: **English** (code, comments, docs, commits, PRs). The app's user interface stays in **French**, as required by the functional specifications.
 
-Le dépôt `FamilyTarot` est vide (LICENSE, README). Les entrées fournies sont :
-- **Spécifications fonctionnelles** (règles de calcul, Goulasch, tours passés, corrections, statistiques, import, critères d'acceptation).
-- **Architecture technique** : PWA statique sur GitHub Pages, un fichier `tarot.json` unique, d'abord IndexedDB local, puis synchronisation Google Drive (étape 4), statistiques calculées dans le navigateur.
-- **Classeur `.xlsm` + export VBA** : la source des règles et des 114 parties archivées.
+## Context
 
-Ce que l'analyse du classeur a confirmé :
-- **128 onglets.**
-  - `UTILITAIRES` : les 3 jeux de règles en B7:Q23. On y trouve l'arrondi (à 1, 5 ou 10, sur `pts`, `base` ou `total`), le partage 2/3, puis les contrats (valide, base, coefficient) et les annonces (valide, base, multiplié, partagé, chutable).
-  - `PARTIE EN COURS`, 114 onglets datés `AAAA-MM-JJ`, et `STATISTIQUES`, qui porte les valeurs de non-régression sur 75 parties : 1744 contrats, dont 800 petites, 779 gardes, 23 gardes sans et 142 gardes contre.
-- **Disposition d'une feuille de score.**
-  - Ligne 4 : le jeu de règles, en C4, ou en B4 sur les anciennes feuilles.
-  - Ligne 5 : le nombre de joueurs, en C5 ou en B5.
-  - Ligne 6 : les en-têtes.
-  - Les données commencent ligne 7 :
-    - B : n° de donne ;
-    - C : contrat ou annonce ;
-    - D : preneur ou annonceur ;
-    - E : partenaire (un partenaire égal au preneur signale un auto-appel) ;
-    - F-G : morts (`/` ou vide) ;
-    - H-J : bases de calcul ;
-    - K : réalisé ;
-    - L : écart ;
-    - M et suivantes : scores de la donne par joueur ;
-    - AB et suivantes : cumuls.
-- **Volumes dans les archives** : 1212 Petites, 1055 Gardes, 177 Gardes contre, 26 Gardes sans, 246 Misères, 244 Poignées, 51 Doubles, 2 Triples, 182 Petits au bout et 5 Chelems.
-- **Arrondi VBA** : `Int(x / v + 1/2) * v`, soit l'arrondi au plus proche, demi vers le haut. Selon le mode, il porte sur l'écart seul (`pts`), sur B+E (`base`) ou sur (B+E)×C (`total`) (VBA l.1733-1739).
-- **Partage** : preneur = D × Partage × 3, partenaire = D × (1−Partage) × 3. Le VBA propose aussi un partage 1/2, qui donne des demi-points.
+The `FamilyTarot` repository started empty (LICENSE, README). Inputs provided:
+- **Functional specifications** (scoring rules, Goulasch, passed deals, corrections, statistics, import, acceptance criteria).
+- **Technical architecture**: static PWA on GitHub Pages, a single `tarot.json` data file, local IndexedDB first, then Google Drive sync, statistics computed in the browser.
+- **`.xlsm` workbook + VBA export**: the source of the rules and of the 114 archived games.
 
-## Choix techniques (« le plus simple à maintenir, sans compilation »)
+What the workbook analysis confirmed:
+- **128 sheets.**
+  - `UTILITAIRES`: the 3 rule sets in B7:Q23. They hold the rounding (to 1, 5 or 10, on `pts`, `base` or `total`), the 2/3 split, then the contracts (valid, base, coefficient) and the announcements (valid, base, multiplied, shared, can-fail).
+  - `PARTIE EN COURS`, 114 sheets dated `YYYY-MM-DD`, and `STATISTIQUES`, which carries the non-regression values for 75 games: 1744 contracts, of which 800 petites, 779 gardes, 23 gardes sans and 142 gardes contre.
+- **Score sheet layout.**
+  - Row 4: the rule set, in C4, or in B4 on older sheets.
+  - Row 5: the number of players, in C5 or B5.
+  - Row 6: headers.
+  - Data starts at row 7:
+    - B: deal number;
+    - C: contract or announcement;
+    - D: taker or announcer;
+    - E: partner (a partner equal to the taker means a self-call);
+    - F-G: dead players (`/` or empty);
+    - H-J: calculation bases;
+    - K: succeeded;
+    - L: point difference;
+    - M onward: per-player deal scores;
+    - AB onward: running totals.
+- **Volumes in the archives**: 1212 Petites, 1055 Gardes, 177 Gardes contre, 26 Gardes sans, 246 Misères, 244 Poignées, 51 Doubles, 2 Triples, 182 Petits au bout and 5 Chelems.
+- **VBA rounding**: `Int(x / v + 1/2) * v`, i.e. round to nearest, halves up. Depending on the mode it applies to the point difference alone (`pts`), to B+E (`base`) or to (B+E)×C (`total`) (VBA l.1733-1739).
+- **Split**: taker = D × Split × 3, partner = D × (1−Split) × 3. The VBA also offers a 1/2 split, which yields half-points.
 
-- **Application en un seul fichier** : `app/index.html` contient tout le HTML, le CSS et le JavaScript, sans étape de build. À côté ne restent que les fichiers que le navigateur exige séparés : `sw.js` (service worker, pour le hors-ligne), `manifest.webmanifest` (installation) et l'icône `icon.svg`.
-- **Découpage interne** : le fichier est organisé en blocs `<script>` balisés.
-  - `<script id="engine">` contient le moteur de calcul pur : règles, arrondi, contrats, annonces, partie, statistiques et schéma. Il expose `globalThis.TarotEngine` et n'utilise ni DOM ni dépendance.
-  - `<script id="vendor-preact">` contient Preact + htm recopiés tels quels (environ 5 Ko, licence MIT conservée en en-tête) : des composants sans JSX, sans compilation et sans CDN, ce qui est indispensable hors ligne.
-  - `<script type="module" id="app">` contient le stockage IndexedDB, Drive et les écrans.
-- **Export Excel** : seule exception au fichier unique. SheetJS (environ 1 Mo, licence Apache 2.0) est mis à côté dans `app/xlsx.full.min.js` et chargé uniquement au clic sur « Exporter en Excel », pour ne pas alourdir l'app. L'export CSV est intégré au fichier.
-- **Types** : des commentaires JSDoc, pour la documentation et l'éditeur. Pas de TypeScript à compiler.
-- **Tests** : `node:test`, intégré à Node, sans aucune dépendance. Un petit utilitaire de test (`tests/load-engine.js`) lit `app/index.html`, extrait le bloc `<script id="engine">` et l'exécute dans `node:vm`. Les tests portent ainsi sur le code exact qui tourne dans le navigateur.
-- **Script d'import du classeur** : du Node en JavaScript (plutôt que du TypeScript, pour rester sans compilation). Il réutilise **le même moteur** que l'app pour le contrôle de recalcul, extrait de `index.html` de la même façon. Sa seule dépendance, SheetJS (`xlsx`), est isolée dans `tools/import/package.json` et n'est jamais publiée.
-- **Publication** : une GitHub Action lance les tests, puis publie `app/` sur GitHub Pages avec `upload-pages-artifact` et `deploy-pages`. Il n'y a pas de build : c'est une simple copie.
-- **Nombres exacts** : les scores sont stockés en **entiers de points**, sans aucune division dans le calcul.
-  - Le partage est exprimé par des multiplicateurs entiers : preneur ×2, partenaire ×1, auto-appel ×4, adversaire ×1.
-  - Le « 2/3 » du classeur devient donc `partage: { preneur: 2, partenaire: 1 }`.
-  - L'option de partage 1/2 du VBA, jamais utilisée, n'est pas reprise.
-- **Licence** : Apache 2.0. Le fichier `LICENSE` du dépôt l'est déjà ; elle sera mentionnée dans le README, et le bloc Preact+htm, sous licence MIT, gardera son en-tête.
+## Technical choices ("simplest to maintain over time, no compilation")
 
-## Structure du dépôt
+- **Single-file application**: `app/index.html` holds all the HTML, CSS and JavaScript, with no build step. Only the files the browser requires to be separate sit next to it: `sw.js` (service worker, for offline use), `manifest.webmanifest` (installation) and the `icon.svg` icon.
+- **Internal layout**: the file is organised in labelled `<script>` blocks.
+  - `<script id="engine">` holds the pure calculation engine: rules, rounding, contracts, announcements, game, statistics and schema. It exposes `globalThis.TarotEngine` and uses neither the DOM nor any dependency.
+  - `<script id="vendor-preact">` holds Preact + htm copied verbatim (about 5 KB, MIT licence kept in the header): components without JSX, without compilation and without a CDN, which is essential offline.
+  - `<script type="module" id="app">` holds the IndexedDB storage, Drive and the screens.
+- **Excel export**: the only exception to the single file. SheetJS (about 1 MB, Apache 2.0 licence) sits next to it in `app/xlsx.full.min.js` and is loaded only when "Export to Excel" is clicked, so the app stays light. CSV export is built into the main file.
+- **Types**: JSDoc comments, for documentation and the editor. No TypeScript to compile.
+- **Tests**: `node:test`, built into Node, with no dependency. A small test helper (`tests/load-engine.js`) reads `app/index.html`, extracts the `<script id="engine">` block and runs it in `node:vm`. Tests therefore cover the exact code that runs in the browser.
+- **Workbook import script**: Node in JavaScript (rather than TypeScript, to stay compilation-free). It reuses **the same engine** as the app for the recalculation check, extracted from `index.html` the same way. Its only dependency, SheetJS (`xlsx`), is isolated in `tools/import/package.json` and never published.
+- **Publication**: a GitHub Action runs the tests, then publishes `app/` to GitHub Pages with `upload-pages-artifact` and `deploy-pages`. There is no build: it is a plain copy.
+- **Exact numbers**: scores are stored as **integers of points**, with no division anywhere in the calculation.
+  - The split is expressed with integer multipliers: taker ×2, partner ×1, self-call ×4, opponent ×1.
+  - The workbook's "2/3" therefore becomes `split: { taker: 2, partner: 1 }`.
+  - The VBA's 1/2 split option, never used, is not carried over.
+- **Licence**: Apache 2.0. The repository's `LICENSE` file already is; it will be mentioned in the README, and the Preact+htm block, MIT-licensed, keeps its header.
+- **Language**: the repository (code, comments, identifiers, docs, commits, PRs) is in English. User-facing strings stay in French. Data keys in `tarot.json` are English; the examples below use English names.
+
+## Repository structure
 
 ```
 app/
-  index.html            # TOUT : CSS + <script id="engine"> + <script id="vendor-preact"> + <script id="app">
-  sw.js                 # service worker (obligatoirement séparé)
-  manifest.webmanifest  # installation PWA (obligatoirement séparé)
+  index.html            # EVERYTHING: CSS + <script id="engine"> + <script id="vendor-preact"> + <script id="app">
+  sw.js                 # service worker (must be separate)
+  manifest.webmanifest  # PWA installation (must be separate)
   icon.svg
-  xlsx.full.min.js      # SheetJS, chargé seulement pour l'export Excel (itération 6)
+  xlsx.full.min.js      # SheetJS, loaded only for Excel export (iteration 6)
 tests/
-  load-engine.js        # extrait le moteur de index.html
+  load-engine.js        # extracts the engine from index.html
   *.test.js             # node --test
-tools/import/           # import-xlsm.js + package.json (xlsx) ; sortie dans data/ (gitignoré)
-.github/workflows/pages.yml   # tests puis publication de app/ ; écrit config dans index.html depuis les secrets
-.gitignore              # *.xlsm, *.xlsx, data/, exports JSON
+tools/import/           # import-xlsm.js + package.json (xlsx); output in data/ (gitignored)
+.github/workflows/pages.yml   # tests then publication of app/; injects config into index.html from secrets
+.gitignore              # *.xlsm, *.xlsx, data/, JSON exports
 README.md
 ```
 
-## Modèle de données (`tarot.json`)
+## Data model (`tarot.json`)
 
 ```js
 {
   schemaVersion: 1, rev: 42, updatedAt,
-  joueurs: [{ id, prenom, googleSub? }],
-  regles: [{ id, nom, arrondiA: 1|5|10, arrondiSur: 'pts'|'base'|'total', partage: {preneur:2, partenaire:1},
-             contrats: { petite:{valide,base,coef}, pousse, garde, gardeSans, gardeContre,
-                         goulasch:{valide, montant:40} },
-             annonces: { petitAuBout:{valide,base,multiplie,partage,chutable}, poignee, doublePoignee,
-                         triplePoignee, misere, chelemNonAnnonce, chelemAnnonce } }],
-  parties: [{ id, date, reglesId, etat:'en_cours'|'archivee', scoreur?, ordreTable:[joueurId],
-              evenementsJoueurs:[{apresDonne, actifs:[joueurId]}],   // arrivées/départs
-              donnes: [{ id, numero, donneur, type:'contrat'|'goulasch'|'passe',
-                         joueurs:[ids], morts:[ids],
-                         contrat?, preneur?, partenaire?, realise?, ecart?,
-                         gagnant?, perdant?,
-                         annonces:[{ id, type, beneficiaire, scores }],
-                         scores:{joueurId: entier}, historique?:true }] }]
+  players: [{ id, firstName, googleSub? }],
+  rules: [{ id, name, roundTo: 1|5|10, roundOn: 'pts'|'base'|'total', split: {taker:2, partner:1},
+            contracts: { petite:{valid,base,coef}, pousse, garde, gardeSans, gardeContre,
+                         goulasch:{valid, amount:40} },
+            announcements: { petitAuBout:{valid,base,multiplied,shared,canFail}, handful,
+                             doubleHandful, tripleHandful, misere, slamUnannounced, slamAnnounced } }],
+  games: [{ id, date, rulesId, state:'in_progress'|'archived', scorer?, tableOrder:[playerId],
+            playerEvents:[{afterDeal, active:[playerId]}],   // arrivals/departures
+            deals: [{ id, number, dealer, type:'contract'|'goulasch'|'passed',
+                      players:[ids], dead:[ids],
+                      contract?, taker?, partner?, succeeded?, pointDiff?,
+                      winner?, loser?,
+                      announcements:[{ id, type, beneficiary, scores }],
+                      scores:{playerId: integer}, historical?:true }] }]
 }
 ```
 
-- Les identifiants sont stables. Le `numero` est recalculé à chaque insertion ou suppression.
-- Les annonces sont imbriquées dans leur donne : supprimer un contrat supprime donc aussi ses annonces.
-- Les scores stockés servent aux statistiques. Ils sont toujours recalculables par `TarotEngine.recomputeGame()`, sauf pour les lignes `historique: true`, dont les scores d'origine sont figés.
+- Identifiers are stable. The deal `number` is recomputed on every insertion or deletion.
+- Announcements are nested in their deal: deleting a contract therefore also deletes its announcements.
+- Stored scores feed the statistics. They can always be recomputed by `TarotEngine.recomputeGame()`, except for `historical: true` lines, whose original scores are frozen.
 
-## Moteur de calcul (cœur, testé en premier)
+## Calculation engine (core, tested first)
 
-- **`contractScores(regles, donne)`** :
-  - D = (B + E) × C, arrondi selon `arrondiSur`.
-  - À 5 joueurs actifs ou plus, avec un partenaire distinct : preneur 2D, partenaire D, adversaires −D, le signe s étant appliqué à tous.
-  - En auto-appel : preneur 4D.
-  - Le calcul ne fait que des additions et des multiplications entières. Seul l'arrondi divise, par 1, 5 ou 10, et son résultat est toujours entier.
-  - À 4 joueurs actifs ou moins : preneur (n−1)D.
-  - Les morts marquent 0.
-- **Goulasch** : le gagnant reçoit +V, le perdant −V, les autres 0. Aucun arrondi.
-- **`announceScores(regles, donne, annonce)`** :
-  - Valeur de base : base × coef si l'annonce est multipliée.
-  - Annonce individuelle (misère) : chacun des actifs paie, 4 payeurs au plus.
-  - Annonce partagée : le camp du bénéficiaire répartit le gain selon le partage, et chaque membre du camp adverse paie la base.
-  - Annonce chutable : le signe suit le résultat du contrat pour le camp du bénéficiaire.
-  - Petit au bout : le signe suit le camp du bénéficiaire, indépendamment du contrat.
-- **`recomputeGame(partie, regles)`** : il recalcule toutes les donnes et les cumuls, puis contrôle que chaque ligne somme à 0, avec un indicateur d'erreur par ligne.
-- **Donneur et tours passés** :
-  - `expectedDealer` tourne dans l'ordre de la table parmi les joueurs présents.
-  - `insertPassesUntil(dealer)` boucle sur la table : 4 tours passés dans l'exemple §3.
-  - Le Goulasch remplace le tour passé quand il est actif.
-- **Validation de saisie** :
-  - Le gagnant doit différer du perdant, et un mort est refusé.
-  - L'écart est un entier de 0 à 91.
-  - Le nombre de morts doit correspondre au nombre de joueurs.
-  - Le message d'erreur du 2e mort est corrigé.
-- **Saisie assistée** (option) : les bouts et les points donnent « réalisé » et l'écart, avec les seuils 56, 51, 41 et 36.
+- **`contractScores(rules, deal)`**:
+  - D = (B + E) × C, rounded according to `roundOn`.
+  - With 5 or more active players and a distinct partner: taker 2D, partner D, opponents −D, with sign s applied to all.
+  - Self-call: taker 4D.
+  - The calculation only uses integer additions and multiplications. Only the rounding divides, by 1, 5 or 10, and its result is always an integer.
+  - With 4 or fewer active players: taker (n−1)D.
+  - Dead players score 0.
+- **Goulasch**: the winner receives +V, the loser −V, the others 0. No rounding.
+- **`announcementScores(rules, deal, announcement)`**:
+  - Base value: base × coef if the announcement is multiplied.
+  - Individual announcement (misère): each of the active players pays, at most 4 payers.
+  - Shared announcement: the beneficiary's side splits the gain according to the split, and each member of the opposing side pays the base.
+  - Can-fail announcement: the sign follows the contract result for the beneficiary's side.
+  - Petit au bout: the sign follows the beneficiary's side, independently of the contract.
+- **`recomputeGame(game, rules)`**: recomputes all deals and running totals, then checks that each line sums to 0, with a per-line error flag.
+- **Dealer and passed deals**:
+  - `expectedDealer` rotates in table order among present players.
+  - `insertPassesUntil(dealer)` loops over the table: 4 passed deals in the §3 example.
+  - Goulasch replaces the passed deal when it is enabled.
+- **Input validation**:
+  - The winner must differ from the loser, and a dead player is refused.
+  - The point difference is an integer from 0 to 91.
+  - The number of dead players must match the number of players.
+  - The error message for the 2nd dead player is fixed.
+- **Assisted entry** (option): the number of oudlers (bouts) and the points scored give "succeeded" and the difference, with thresholds 56, 51, 41 and 36.
 
-## Interface (mobile d'abord, en français)
+## Interface (mobile first, in French)
 
-1. **Accueil** : la partie en cours et l'historique, du plus récent au plus ancien, avec la date, les joueurs, le nombre de donnes et le podium.
-2. **Nouvelle partie** : la date, le jeu de règles (copié dans la partie) et les joueurs ordonnés, choisis parmi les joueurs connus ou créés à la volée.
-3. **Feuille de score** :
-   - un tableau compact (score de la donne et cumul, morts et absents grisés, indicateur de somme ≠ 0) ;
-   - les actions Ajouter, Rajouter après, Modifier et Supprimer, sur la donne ou sur l'annonce ;
-   - le graphique d'évolution des cumuls, en SVG ;
-   - « Arrivée/départ de joueurs ».
-4. **Formulaire de donne** :
-   - les champs sont présentés en boutons ou en listes, dans l'ordre §5, et s'adaptent au contrat ;
-   - les tours passés sont insérés automatiquement ;
-   - changer de type supprime les annonces après confirmation.
-5. **Formulaire d'annonce** : le type actif et le bénéficiaire, parmi les joueurs actifs uniquement.
-6. **Règles** : un éditeur des règles de la partie, avec le choix « donnes suivantes » ou « recalcul complet ».
-7. **Statistiques** : un filtre de période, puis les tableaux par joueur de la §10 (total et moyenne par partie, avertissement sous 10 parties), plus les statistiques Goulasch.
-8. **Données** : l'export et l'import du fichier JSON (sauvegarde manuelle avant Drive).
+1. **Home**: the game in progress and the history, most recent first, with date, players, number of deals and podium.
+2. **New game**: the date, the rule set (copied into the game) and the ordered players, chosen from known players or created on the fly.
+3. **Score sheet**:
+   - a compact table (deal score and running total, dead and absent players greyed out, sum ≠ 0 indicator);
+   - the Add, Insert after, Edit and Delete actions, on the deal or on the announcement;
+   - the SVG chart of running totals;
+   - "Player arrival/departure".
+4. **Deal form**:
+   - fields are presented as buttons or lists, in the §5 order, and adapt to the contract;
+   - passed deals are inserted automatically;
+   - changing the type deletes the announcements after confirmation.
+5. **Announcement form**: the enabled type and the beneficiary, among active players only.
+6. **Rules**: an editor for the game's rules, with the choice "following deals" or "full recalculation".
+7. **Statistics**: a period filter, then the per-player tables of §10 (total and average per game, warning under 10 games), plus Goulasch statistics.
+8. **Data**: export and import of the JSON file (manual backup before Drive).
 
-**Persistance** :
-- Chaque action est écrite dans IndexedDB de façon transactionnelle, avant toute mise à jour de l'affichage.
-- L'app demande `navigator.storage.persist()`.
-- Le service worker met en cache l'app shell (portée = sous-dossier Pages, chemins relatifs).
+**Persistence**:
+- Each action is written to IndexedDB transactionally, before the display is updated.
+- The app requests `navigator.storage.persist()`.
+- The service worker caches the app shell (scope = Pages sub-folder, relative paths).
 
-## Import du classeur (`tools/import/import-xlsm.js`)
+## Workbook import (`tools/import/import-xlsm.js`)
 
-- **Ce qui est lu** :
-  - les règles de `UTILITAIRES` ;
-  - chaque onglet daté et `PARTIE EN COURS`, avec la position du jeu de règles et du nombre de joueurs (B ou C).
-- **Correspondance ligne par ligne** :
-  - un contrat devient une donne ;
-  - une annonce s'attache à la donne de même n° ;
-  - les joueurs actifs se déduisent des scores et des morts ; les départs se repèrent aux colonnes hachurées ou vides ;
-  - un partenaire égal au preneur donne un auto-appel.
-- **Règles historiques** : jusqu'en mai 2016, l'import utilise la variante « Personnalisé-2016 », où le petit au bout vaut 10 fixes. La date exacte de bascule se détecte sur les données.
-- **Contrôle de recalcul** :
-  - pour chaque ligne, les scores recalculés par le moteur sont comparés aux scores du classeur arrondis à l'entier, ce qui élimine les résidus flottants du type 84.000000000000014 ;
-  - l'import produit un rapport des écarts ;
-  - 4 des exceptions connues (2015-11-06 donnes 29-30, 2016-11-25 donnes 22 et 28) sont marquées `historique`, avec leurs scores d'origine figés ;
-  - la misère du 2014-11-10 (donne 26, 4 joueurs actifs, +40 et 3 × −13,33) est **corrigée** par le calcul normal : +30 pour l'annonceur, −10 pour chacun des 3 autres. Elle est listée dans le rapport comme correction volontaire, ce qui fait évoluer le total final de cette partie par rapport au classeur.
-- **Sortie** : `data/tarot.json` et `data/rapport-import.txt`, jamais commités. Ce fichier s'importe ensuite dans l'app par « Importer JSON ».
+- **What is read**:
+  - the rules from `UTILITAIRES`;
+  - each dated sheet and `PARTIE EN COURS`, with the position of the rule set and of the player count (B or C).
+- **Line-by-line mapping**:
+  - a contract becomes a deal;
+  - an announcement attaches to the deal with the same number;
+  - active players are deduced from the scores and the dead players; departures are spotted from the hatched or empty columns;
+  - a partner equal to the taker gives a self-call.
+- **Historical rules**: until May 2016, the import uses the "Custom-2016" variant, where the petit au bout is worth a fixed 10. The exact switch date is detected from the data.
+- **Recalculation check**:
+  - for each line, the scores recomputed by the engine are compared with the workbook scores rounded to the integer, which removes floating-point residue such as 84.000000000000014;
+  - the import produces a discrepancy report;
+  - 4 of the known exceptions (2015-11-06 deals 29-30, 2016-11-25 deals 22 and 28) are marked `historical`, with their original scores frozen;
+  - the misère of 2014-11-10 (deal 26, 4 active players, +40 and 3 × −13.33) is **corrected** by the normal calculation: +30 for the announcer, −10 for each of the 3 others. It is listed in the report as a deliberate correction, which changes that game's final total compared with the workbook.
+- **Output**: `data/tarot.json` and `data/import-report.txt`, never committed. That file is then imported into the app via "Import JSON".
 
-## Itération 1, première étape : « Hello world » sur GitHub Pages
+## Iteration 1, first step: "Hello world" on GitHub Pages
 
-But : valider tout de suite la chaîne de publication, de la branche à `main`, puis l'Action et la page en ligne.
+Goal: validate the publication chain right away, from the branch to `main`, then the Action and the live page.
 
-Fichiers à créer sur la branche `ccr-352b2f30-paao2e` :
-- `app/index.html` : une page minimale en français, « Tarot — Hello world », avec la date de publication injectée et un test de la variable `__BUILD__` remplacée par le workflow (preuve que l'injection marche, en vue des secrets).
-- `.github/workflows/pages.yml` :
-  - déclenché sur `push` de toutes les branches et sur `workflow_dispatch` ;
-  - job `test` : `node --test` (aucun test au début, donc la commande passe) ;
-  - job `deploy`, uniquement si `github.ref == 'refs/heads/main'` : `actions/configure-pages`, remplacement de `__BUILD__` par `sed`, puis `actions/upload-pages-artifact` sur `app/` et `actions/deploy-pages` ;
-  - permissions `pages: write`, `id-token: write`, environnement `github-pages`.
-- `.gitignore` : `*.xlsm`, `*.xlsx`, `data/`, `node_modules/`.
+Files to create on branch `ccr-352b2f30-paao2e`:
+- `app/index.html`: a minimal page, with the publication version injected through a `__BUILD__` marker replaced by the workflow (proof that the injection works, ahead of the secrets).
+- `.github/workflows/pages.yml`:
+  - triggered on `push` of all branches and on `workflow_dispatch`;
+  - `test` job: `node --test`;
+  - `deploy` job, only if `github.ref == 'refs/heads/main'`: `actions/configure-pages`, replacement of `__BUILD__` with `sed`, then `actions/upload-pages-artifact` on `app/` and `actions/deploy-pages`;
+  - permissions `pages: write`, `id-token: write`, environment `github-pages`.
+- `.gitignore`: `*.xlsm`, `*.xlsx`, `data/`, `node_modules/`.
 
-Ensuite :
-1. Commit et push sur la branche.
-2. Proposer une PR vers `main`, que je crée si tu le confirmes.
-3. Après fusion, vérifier la page sur `https://wkirschenmann.github.io/FamilyTarot/`.
+Then:
+1. Commit and push to the branch.
+2. Open a PR to `main`.
+3. After the merge, check the page at `https://wkirschenmann.github.io/FamilyTarot/`.
 
-## Itérations proposées
+## Proposed iterations
 
-Chaque itération se termine par quelque chose que tu peux essayer toi-même, sur ton téléphone ou ton ordinateur. Elle est poussée sur la branche, avec des tests verts en CI. On ne passe à la suivante qu'après ton retour.
+Each iteration ends with something you can try yourself, on your phone or computer. It is pushed to the branch with green tests in CI. We move on to the next one only after your feedback.
 
-| It. | Lots | Ce que tu peux essayer à la fin | Ce dont j'ai besoin de toi |
+| It. | Lots | What you can try at the end | What I need from you |
 |---|---|---|---|
-| **1** | 0 | D'abord le « Hello world » publié (chaîne branche → `main` → Action → Pages validée), puis le squelette PWA installable et hors ligne (`sw.js`, manifeste, icône) | (Pages déjà configuré sur « GitHub Actions » ✓) Fusionner la PR ; installer l'app sur Android et la relancer en mode avion |
-| **2** | 1 + 2 | Le moteur de calcul vérifié par tests (5 exemples, Goulasch, tours passés), puis une vraie soirée jouable en local : créer une partie, saisir, corriger, annonces, Goulasch, sauvegarde/restauration du JSON | Tester sur une partie réelle ou simulée ; retours sur l'ergonomie de saisie. En parallèle, créer le projet Google Cloud avec le guide fourni |
-| **3** | 3 | Synchronisation Drive : le scoreur envoie, un second compte lit, changement de scoreur, conflit détecté | Deux comptes Google pour le test ; les secrets GitHub (`GOOGLE_CLIENT_ID`, `TAROT_DRIVE_FILE_ID`) |
-| **4** | 4 | Les 114 parties et la partie en cours dans l'app, via Drive ; rapport d'écarts de l'import | Lancer le script d'import sur ton poste avec le classeur (ou me le fournir dans la session, sans commit), puis valider le rapport |
-| **5** | 5 | L'écran Statistiques et le graphique d'évolution, avec les chiffres de non-régression retrouvés | Comparer avec tes souvenirs et l'ancien onglet |
-| **6** | 6 | Exports CSV et Excel, annuler/rétablir, journal des modifications | Retours d'usage |
+| **1** | 0 | First the published "Hello world" (branch → `main` → Action → Pages chain validated), then the installable, offline PWA skeleton (`sw.js`, manifest, icon) | (Pages already set to "GitHub Actions" ✓) Merge the PR; install the app on Android and relaunch it in airplane mode |
+| **2** | 1 + 2 | The calculation engine verified by tests (5 examples, Goulasch, passed deals), then a really playable evening locally: create a game, enter deals, correct, announcements, Goulasch, JSON backup/restore | Try it on a real or simulated game; feedback on entry ergonomics. In parallel, create the Google Cloud project with the guide provided |
+| **3** | 3 | Drive sync: the scorer uploads, a second account reads, scorer change, conflict detected | Two Google accounts for testing; the GitHub secrets (`GOOGLE_CLIENT_ID`, `TAROT_DRIVE_FILE_ID`) |
+| **4** | 4 | The 114 games and the game in progress in the app, via Drive; import discrepancy report | Run the import script on your machine with the workbook (or provide it in the session, without committing it), then validate the report |
+| **5** | 5 | The Statistics screen and the evolution chart, with the non-regression figures reproduced | Compare with your memory and the old sheet |
+| **6** | 6 | CSV and Excel exports, undo/redo, change log | Usage feedback |
 
-**Mise en ligne** :
-- je travaille sur la branche `ccr-352b2f30-paao2e` ;
-- l'environnement `github-pages` n'accepte par défaut que la branche principale, donc le workflow lance les tests sur toutes les branches mais ne publie que depuis `main` ;
-- en fin d'itération, je te propose une pull request, et sa fusion met l'app en ligne.
+**Going live**:
+- I work on branch `ccr-352b2f30-paao2e`;
+- the `github-pages` environment only accepts the main branch by default, so the workflow runs the tests on all branches but only publishes from `main`;
+- at the end of an iteration, a pull request is opened, and merging it puts the app online.
 
-Le format `tarot.json` (`schemaVersion: 1`) est défini dès l'itération 1, puis figé à la fin de l'itération 3. Les itérations 4 à 6 n'en changent plus la structure, ou passent par une migration automatique (fonction `migrate` du moteur).
+The `tarot.json` format (`schemaVersion: 1`) is defined from iteration 1, then frozen at the end of iteration 3. Iterations 4 to 6 no longer change its structure, or go through an automatic migration (the engine's `migrate` function).
 
-## Étapes (détail des lots)
+## Steps (lot details)
 
-| Lot | Contenu | Validé par |
+| Lot | Content | Validated by |
 |---|---|---|
-| 0 | Squelette : `app/` PWA installable et hors ligne, workflow Pages, `.gitignore`, README | Hypothèse 10 (installation et mode avion, Android et PC) |
-| 1 | Moteur de calcul et tests | Les 5 exemples §8, critères 1, 2, 3 et 7 |
-| 2 | v1 UI locale : parties, saisie, annonces, corrections, tours passés, Goulasch, IndexedDB, export/import JSON | Critère 6, saisie réelle sur téléphone |
-| 3 | Synchronisation Google Drive : fichier désigné par secret GitHub, OAuth `drive.file`, Picker, compteur `rev`, verrou par scoreur ; aucune copie datée : un seul fichier sur Drive, filet de sécurité = historique des versions de Drive (hypothèse 8) | Prototype préalable des hypothèses 1-4, 6, 11 et 12 (projet Google Cloud à créer par toi) |
-| 4 | Import du classeur et rapport de recalcul ; `tarot.json` produit puis déposé sur Drive comme fichier partagé de référence | Critère 4 (114 totaux, hors les 4 exceptions et la correction du 2014-11-10) |
-| 5 | Statistiques complètes et graphique | Critère 5 (2470 contrats, 79,0 % réalisés ; non-régression sur 75 parties) |
-| 6 | Confort : export **CSV et Excel (.xlsx)** d'une partie et des statistiques, annuler/rétablir, journal des modifications | Export ouvert dans Excel et LibreOffice |
+| 0 | Skeleton: `app/` offline installable PWA, Pages workflow, `.gitignore`, README | Hypothesis 10 (installation and airplane mode, Android and PC) |
+| 1 | Calculation engine and tests | The 5 examples of §8, criteria 1, 2, 3 and 7 |
+| 2 | v1 local UI: games, entry, announcements, corrections, passed deals, Goulasch, IndexedDB, JSON export/import | Criterion 6, real entry on a phone |
+| 3 | Google Drive sync: file designated via GitHub secret, OAuth `drive.file`, Picker, `rev` counter, scorer lock; no dated copies: a single file on Drive, safety net = Drive version history (hypothesis 8) | Prior prototype of hypotheses 1-4, 6, 11 and 12 (Google Cloud project to be created by you) |
+| 4 | Workbook import and recalculation report; `tarot.json` produced then placed on Drive as the shared reference file | Criterion 4 (114 totals, apart from the 4 exceptions and the 2014-11-10 correction) |
+| 5 | Full statistics and chart | Criterion 5 (2470 contracts, 79.0% succeeded; non-regression on 75 games) |
+| 6 | Comfort: **CSV and Excel (.xlsx)** export of a game and of the statistics, undo/redo, change log | Export opened in Excel and LibreOffice |
 
-Le format `tarot.json` est figé à la fin du lot 3 (Drive), pour que l'import (lot 4) produise directement le fichier définitif, sans conversion à refaire. Le prototype Drive (hypothèses 1-3 et 12) peut démarrer dès que le projet Google Cloud existe, en parallèle du lot 2.
+The `tarot.json` format is frozen at the end of lot 3 (Drive), so that the import (lot 4) directly produces the final file, with no conversion to redo. The Drive prototype (hypotheses 1-3 and 12) can start as soon as the Google Cloud project exists, in parallel with lot 2.
 
-## Vérification
+## Verification
 
-- `node --test` :
-  - les exemples chiffrés §8 et le Goulasch ;
-  - les tours passés : à 5 joueurs, avec 3e attendu et 2e choisi, 4 tours sont ajoutés ;
-  - les morts, l'auto-appel et les annonces (misère 5 joueurs +40/−10, poignée chutée, petit au bout côté défense) ;
-  - l'arrondi dans ses 3 modes, et la somme à 0 sur chaque ligne.
-- **Import** : `node tools/import/import-xlsm.js <classeur.xlsm>` doit afficher 0 écart hors des 4 exceptions historiques et de la correction volontaire du 2014-11-10 (misère +30/−10). Le rapport de statistiques doit donner 2470 contrats et 79,0 %, et retrouver les valeurs de l'onglet STATISTIQUES sur les 75 plus anciennes parties.
-- **App** :
-  - servir `app/` en local et la piloter avec Playwright (Chromium préinstallé) : créer une partie, saisir les 5 exemples, vérifier les cumuls, recharger la page (persistance), passer hors ligne (service worker) ;
-  - après publication, installer la PWA sur Android et la relancer en mode avion.
-- **CI** : les tests sont lancés à chaque push, et la publication sur Pages n'a lieu que s'ils sont verts.
+- `node --test`:
+  - the numerical examples of §8 and the Goulasch;
+  - passed deals: with 5 players, 3rd expected and 2nd chosen, 4 passed deals are added;
+  - dead players, self-call and announcements (5-player misère +40/−10, failed handful, petit au bout on the defence side);
+  - rounding in its 3 modes, and a sum of 0 on every line.
+- **Import**: `node tools/import/import-xlsm.js <workbook.xlsm>` must show 0 discrepancies apart from the 4 historical exceptions and the deliberate 2014-11-10 correction (misère +30/−10). The statistics report must give 2470 contracts and 79.0%, and reproduce the values of the STATISTIQUES sheet on the 75 oldest games.
+- **App**:
+  - serve `app/` locally and drive it with Playwright (preinstalled Chromium): create a game, enter the 5 examples, check the running totals, reload the page (persistence), go offline (service worker);
+  - after publication, install the PWA on Android and relaunch it in airplane mode.
+- **CI**: tests run on every push, and publication to Pages only happens if they are green.
 
-## Fichier Google Drive (lot 3)
+## Google Drive file (lot 3)
 
-- **Projet Google Cloud (retenu)** :
-  - il est créé avec ton compte Google actuel, gratuitement et sans carte bancaire ;
-  - il porte l'API Drive, l'API Picker, l'écran de consentement (droit `drive.file` seul) et un identifiant client OAuth « application Web », limité à l'adresse GitHub Pages ;
-  - je fournirai un guide pas à pas (`docs/google-cloud.md`) au début du lot 3.
+- **Google Cloud project (chosen)**:
+  - it is created with your current Google account, free of charge and without a credit card;
+  - it carries the Drive API, the Picker API, the consent screen (`drive.file` scope only) and a "Web application" OAuth client ID, restricted to the GitHub Pages address;
+  - I will provide a step-by-step guide (`docs/google-cloud.md`) at the start of lot 3.
 
-- **Fichier unique** : un seul et unique fichier `tarot.json` sur Drive, créé une fois puis partagé en modification avec toutes les personnes concernées.
-  - L'app ne crée **aucun autre fichier** : pas de copies datées ni de sous-dossier, contrairement à ce que proposait le document d'architecture.
-  - Le filet de sécurité est l'historique des versions de Drive (hypothèse 8, à vérifier au prototype), plus l'export manuel du JSON.
-- **Injection du lien** : son lien, ou son identifiant, est stocké dans un **secret GitHub** (`TAROT_DRIVE_FILE_ID`). L'identifiant client OAuth y est aussi (`GOOGLE_CLIENT_ID`). Au déploiement, le workflow Pages remplace des marqueurs (`__GOOGLE_CLIENT_ID__`, `__TAROT_DRIVE_FILE_ID__`) dans la copie publiée de `index.html` ; rien n'est commité. Il n'y a toujours aucune compilation : c'est un simple remplacement de texte (`sed`).
-- **Limite à connaître** :
-  - le site Pages est public, donc l'identifiant sera lisible dans la page publiée ;
-  - le secret évite seulement de l'écrire dans le dépôt ; la vraie protection est le partage Drive, puisque seuls les comptes invités peuvent ouvrir le fichier.
-- **Point à vérifier** (hypothèse 1) : avec le droit `drive.file`, connaître l'identifiant ne suffit pas. Chaque joueur devra sans doute désigner le fichier une fois via le Google Picker, que l'app ouvrira directement sur ce fichier. Si c'est trop contraignant, il faudra un droit plus large (`drive.readonly` ou `drive`), soumis à validation Google.
+- **Single file**: one and only one `tarot.json` file on Drive, created once then shared with edit rights with everyone concerned.
+  - The app creates **no other file**: no dated copies and no sub-folder, unlike what the architecture document proposed.
+  - The safety net is Drive's version history (hypothesis 8, to be checked on the prototype), plus the manual JSON export.
+- **Link injection**: its link, or identifier, is stored in a **GitHub secret** (`TAROT_DRIVE_FILE_ID`). The OAuth client ID is there too (`GOOGLE_CLIENT_ID`). At deployment, the Pages workflow replaces markers (`__GOOGLE_CLIENT_ID__`, `__TAROT_DRIVE_FILE_ID__`) in the published copy of `index.html`; nothing is committed. There is still no compilation: it is a plain text replacement (`sed`).
+- **Limit to be aware of**:
+  - the Pages site is public, so the identifier will be readable in the published page;
+  - the secret only avoids writing it in the repository; the real protection is the Drive sharing, since only invited accounts can open the file.
+- **Point to check** (hypothesis 1): with the `drive.file` scope, knowing the identifier is not enough. Each player will probably have to designate the file once through the Google Picker, which the app will open directly on that file. If that is too constraining, a broader scope (`drive.readonly` or `drive`) will be needed, subject to Google verification.
 
-## Points à trancher plus tard (non bloquants pour les lots 0-3)
+## Points to settle later (not blocking for lots 0-3)
 
-- Association compte Google ↔ prénom (lot 3).
-- **Dépôt désormais public**, donc GitHub Pages est utilisable gratuitement.
-  - Le `.gitignore` exclut `*.xlsm`, `*.xlsx`, `data/` et les exports JSON : aucune donnée de jeu ne va dans le dépôt.
-  - Les tests utilisent uniquement les exemples chiffrés des spécifications, qui ne contiennent que des prénoms. Les fichiers de spécification et d'architecture peuvent être ajoutés dans `docs/` si tu le souhaites.
+- Association between a Google account and a first name (lot 3).
+- **Repository now public**, so GitHub Pages is usable for free.
+  - `.gitignore` excludes `*.xlsm`, `*.xlsx`, `data/` and the JSON exports: no game data goes into the repository.
+  - Tests only use the numerical examples of the specifications, which only contain first names. The specification and architecture files can be added to `docs/` if you wish.

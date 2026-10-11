@@ -1,4 +1,4 @@
-# Données de jeu : jamais dans le dépôt (public)
+# Game data: never in the repository (public)
 *.xlsm
 *.xlsx
 data/

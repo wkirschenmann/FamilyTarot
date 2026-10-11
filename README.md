@@ -1,21 +1,23 @@
 # FamilyTarot
 
-Application web (PWA) de comptage des points de tarot, qui remplace le classeur Excel « Calcul Scores Tarot ».
+Web app (PWA) for scoring tarot games, replacing the "Calcul Scores Tarot" Excel workbook.
 
-- Site publié : https://wkirschenmann.github.io/FamilyTarot/
-- Plan de réalisation : [docs/PLAN.md](docs/PLAN.md)
+- Published site: https://wkirschenmann.github.io/FamilyTarot/
+- Implementation plan: [docs/PLAN.md](docs/PLAN.md)
 
-## Développement
+The repository (code, docs, commits, PRs) is in English; the app's user interface is in French.
 
-Aucune compilation : le dossier `app/` est publié tel quel par GitHub Actions (tests puis déploiement, depuis `main` uniquement).
+## Development
+
+No compilation: the `app/` folder is published as is by GitHub Actions (tests, then deployment from `main` only).
 
 ```sh
-node --test                     # tests
-python3 -m http.server -d app   # servir l'app en local sur http://localhost:8000
+node --test                     # run tests
+python3 -m http.server -d app   # serve the app locally at http://localhost:8000
 ```
 
-Aucune donnée de jeu (classeur, exports JSON) ne doit être commitée : le dépôt est public.
+No game data (workbook, JSON exports) must ever be committed: the repository is public.
 
-## Licence
+## License
 
-Apache 2.0, voir [LICENSE](LICENSE).
+Apache 2.0, see [LICENSE](LICENSE).
