@@ -6,17 +6,20 @@
   <title>Tarot</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <meta name="theme-color" content="#1b5e3a">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#1b5e3a" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#24714a" media="(prefers-color-scheme: dark)">
   <style>
 :root {
   --bg: #f4f6f3; --fg: #1d2420; --muted: #66726b; --card: #fff; --line: #d9dfda;
   --green: #1b5e3a; --green-fg: #fff; --pos: #17703f; --neg: #b3261e; --warn: #b26a00; --hatch: #e6e9e6;
   --radius: 10px;
+  color-scheme: light dark; /* native controls (date picker, scrollbars, checkboxes) follow the system setting */
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #121714; --fg: #e8ece9; --muted: #98a59d; --card: #1b221e; --line: #2c3631;
-    --green: #2d8a5a; --pos: #5fd08e; --neg: #ff8a80; --warn: #ffb74d; --hatch: #262e29;
+    --green: #24714a; --pos: #5fd08e; --neg: #ff8a80; --warn: #ffb74d; --hatch: #262e29;
   }
 }
 * { box-sizing: border-box; }
@@ -62,6 +65,7 @@ table.sheet { border-collapse: separate; border-spacing: 0; width: 100%; font-va
 .sheet tr.ann td.label { padding-left: 18px; color: var(--muted); }
 .sheet tr.tap { cursor: pointer; }
 .sheet tr.bad td { background: #fdecea; }
+@media (prefers-color-scheme: dark) { .sheet tr.bad td { background: #3a1d1a; } }
 .sheet td.out { background: repeating-linear-gradient(45deg, var(--hatch) 0 4px, transparent 4px 8px); }
 .sheet td.dead { color: var(--muted); }
 .sheet td small { display: block; color: var(--muted); font-size: .72rem; }

@@ -35,3 +35,16 @@ test('index.html links the manifest and registers the service worker with relati
 test('service worker carries the build marker replaced at deployment', () => {
   assert.match(readFileSync(app('sw.js'), 'utf8'), /__BUILD__/);
 });
+
+test('dark mode follows the system setting (no hard-coded light-only colours)', () => {
+  const html = readFileSync(app('index.html'), 'utf8');
+  assert.match(html, /color-scheme: light dark/);
+  assert.match(html, /<meta name="color-scheme" content="light dark">/);
+  assert.match(html, /<meta name="theme-color" content="[^"]+" media="\(prefers-color-scheme: dark\)">/);
+  assert.match(html, /@media \(prefers-color-scheme: dark\) \{\s*:root \{/);
+  // every light-only highlight colour must have a dark counterpart
+  for (const selector of ['.error', '.info', '.warn', '.sheet tr.bad td']) {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    assert.match(html, new RegExp(`@media \\(prefers-color-scheme: dark\\) \\{ ${escaped} \\{`), `no dark variant for ${selector}`);
+  }
+});

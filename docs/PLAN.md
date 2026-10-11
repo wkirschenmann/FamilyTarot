@@ -58,6 +58,8 @@ What the workbook analysis confirmed:
 - Pousse: the FFT preset follows the official FFT rulebook ([Règlement FFT, donnes libres](https://fftarot.fr/assets/documents/ReglementFFT_DonnesLibres.pdf)), which has no Pousse (Prise ×1, Garde ×2, Garde sans ×4, Garde contre ×6; base 25) and no misère: both stay disabled in that preset. In the other presets the Pousse is disabled with coefficient 1 (the workbook had 1.5 in the custom set, which is not an integer).
 - Known gaps between the official rulebook and the FFT preset (to be decided): the rulebook does not round (the workbook preset rounds to 10 on the base), and it has a −200 penalty for an announced but failed slam, which the engine does not model yet.
 
+- Dark mode: the interface follows the system / browser setting (`prefers-color-scheme`) with no manual switch: palette variables, `color-scheme` for native controls, highlight colours and the browser theme colour all have dark counterparts.
+
 ## Repository structure
 
 ```
