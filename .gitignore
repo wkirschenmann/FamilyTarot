@@ -1,0 +1,6 @@
+# Données de jeu : jamais dans le dépôt (public)
+*.xlsm
+*.xlsx
+data/
+
+node_modules/
